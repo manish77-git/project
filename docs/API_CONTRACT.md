@@ -63,8 +63,8 @@ Candidates are *unverified readings*, never confirmed facts.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `outcome` | `"verified" \| "amounts_differ" \| "bill_not_found" \| "hospital_not_registered"` | Exactly these four |
-| `safeMessage` | `string` | Patient-safe wording; must not quote amounts |
-| `discrepancyFieldKeys` | `FinancialFieldKey[]` | Only for `amounts_differ`; default `[]`. **Keys only, never values** |
+| `message` | `string` | Patient-safe wording; must not quote amounts |
+| `discrepancyKeys` | `FinancialFieldKey[]` | Only for `amounts_differ`; default `[]`. **Keys only, never values** |
 
 An unreadable image is **not** a verification outcome — it is
 `identificationStatus: "unreadable_image"`.
@@ -99,7 +99,9 @@ Containers:
 
 - `financialFieldsSchema` → `FinancialFields` — exactly the five fields.
 - `documentFinancialsSchema` → `DocumentFinancials` — the five fields **plus**
-  `currency: "INR"` and `warnings: string[]`.
+  `currency: "INR"` and `documentWarnings: string[]`. Uses
+  `financialFieldCandidateSchema` for each field, so `confirmedByUser` is
+  always `false` — this represents AI-extracted candidate data.
 
 Model-output variants and confirmation:
 

@@ -173,11 +173,11 @@ describe("financialFieldsSchema and documentFinancialsSchema", () => {
     expect(financialFieldsSchema.safeParse(validFields()).success).toBe(true);
   });
 
-  it("accepts a full document with INR currency and warnings", () => {
+  it("accepts a full document with INR currency and documentWarnings", () => {
     const result = documentFinancialsSchema.safeParse({
       ...validFields(),
       currency: "INR",
-      warnings: ["Page 2 was creased."],
+      documentWarnings: ["Page 2 was creased."],
     });
     expect(result.success).toBe(true);
   });
@@ -185,7 +185,7 @@ describe("financialFieldsSchema and documentFinancialsSchema", () => {
   it("rejects a document without the currency", () => {
     const result = documentFinancialsSchema.safeParse({
       ...validFields(),
-      warnings: [],
+      documentWarnings: [],
     });
     expect(result.success).toBe(false);
   });
@@ -194,7 +194,7 @@ describe("financialFieldsSchema and documentFinancialsSchema", () => {
     const result = documentFinancialsSchema.safeParse({
       ...validFields(),
       currency: "USD",
-      warnings: [],
+      documentWarnings: [],
     });
     expect(result.success).toBe(false);
   });
@@ -208,7 +208,28 @@ describe("financialFieldsSchema and documentFinancialsSchema", () => {
     const broken = validFields();
     broken.patientPayments = validField({ amountRupees: null, status: "found" });
     expect(
-      documentFinancialsSchema.safeParse({ ...broken, currency: "INR", warnings: [] }).success,
+      documentFinancialsSchema.safeParse({ ...broken, currency: "INR", documentWarnings: [] }).success,
     ).toBe(false);
+  });
+
+  it("rejects confirmedByUser=true inside documentFinancialsSchema fields", () => {
+    const fields = validFields();
+    fields.billTotalAfterDiscounts = validField({ confirmedByUser: true });
+    const result = documentFinancialsSchema.safeParse({
+      ...fields,
+      currency: "INR",
+      documentWarnings: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects unexpected properties in documentFinancialsSchema", () => {
+    const result = documentFinancialsSchema.safeParse({
+      ...validFields(),
+      currency: "INR",
+      documentWarnings: [],
+      diagnosis: "D50",
+    });
+    expect(result.success).toBe(false);
   });
 });

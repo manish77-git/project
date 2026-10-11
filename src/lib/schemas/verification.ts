@@ -29,12 +29,12 @@ export const billVerificationSchema = z
      * financial values — generic wording only (e.g. "Amounts do not match
      * hospital records" rather than quoting figures).
      */
-    safeMessage: z.string().trim().min(1).max(1000),
+    message: z.string().trim().min(1).max(1000),
     /**
      * For "amounts_differ": the KEYS of the fields that differed.
      * Empty array for all other outcomes.
      */
-    discrepancyFieldKeys: z.array(financialFieldKeySchema).default([]),
+    discrepancyKeys: z.array(financialFieldKeySchema).default([]),
   })
   .strict();
 export type BillVerification = z.infer<typeof billVerificationSchema>;

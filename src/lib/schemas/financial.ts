@@ -116,14 +116,25 @@ export const financialFieldsSchema = z
 export type FinancialFields = z.infer<typeof financialFieldsSchema>;
 
 /**
- * Full financial view of one processed document: the five fields, the
- * supported currency (INR only) and document-level warnings.
+ * Full financial view of one processed document: the five candidate fields,
+ * the supported currency (INR only) and document-level warnings.
+ *
+ * Uses financialFieldCandidateSchema so confirmedByUser is always false —
+ * this represents AI-extracted candidate data, not patient-confirmed data.
  */
-export const documentFinancialsSchema = financialFieldsSchema.extend({
-  currency: currencySchema,
-  warnings: documentWarningsSchema,
-});
+export const documentFinancialsSchema = z
+  .object({
+    billTotalAfterDiscounts: financialFieldCandidateSchema,
+    insuranceApprovedButNotPaid: financialFieldCandidateSchema,
+    insurancePaidOrCredited: financialFieldCandidateSchema,
+    patientPayments: financialFieldCandidateSchema,
+    printedAmountDue: financialFieldCandidateSchema,
+    currency: currencySchema,
+    documentWarnings: documentWarningsSchema,
+  })
+  .strict();
 export type DocumentFinancials = z.infer<typeof documentFinancialsSchema>;
+
 
 /** Keys of the five tracked fields — useful for referencing a fact by name. */
 export const financialFieldKeySchema = z.enum([

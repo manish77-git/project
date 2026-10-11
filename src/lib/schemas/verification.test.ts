@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { billVerificationSchema, verificationOutcomeSchema } from "./verification";
 
 const base = {
-  safeMessage: "Bill details match hospital records.",
-  discrepancyFieldKeys: [] as string[],
+  message: "Bill details match hospital records.",
+  discrepancyKeys: [] as string[],
 };
 
 describe("billVerificationSchema", () => {
@@ -17,8 +17,8 @@ describe("billVerificationSchema", () => {
     for (const outcome of verificationOutcomeSchema.options) {
       const result = billVerificationSchema.safeParse({
         outcome,
-        safeMessage: messages[outcome],
-        discrepancyFieldKeys: [],
+        message: messages[outcome],
+        discrepancyKeys: [],
       });
       expect(result.success, `outcome ${outcome}`).toBe(true);
     }
@@ -39,11 +39,11 @@ describe("billVerificationSchema", () => {
     }
   });
 
-  it("accepts discrepancy field keys for amounts_differ", () => {
+  it("accepts discrepancy keys for amounts_differ", () => {
     const result = billVerificationSchema.safeParse({
       outcome: "amounts_differ",
-      safeMessage: "Some amounts on the bill differ from hospital records.",
-      discrepancyFieldKeys: ["printedAmountDue", "insurancePaidOrCredited"],
+      message: "Some amounts on the bill differ from hospital records.",
+      discrepancyKeys: ["printedAmountDue", "insurancePaidOrCredited"],
     });
     expect(result.success).toBe(true);
   });
@@ -58,20 +58,20 @@ describe("billVerificationSchema", () => {
     expect(billVerificationSchema.safeParse(withAmounts).success).toBe(false);
   });
 
-  it("defaults discrepancyFieldKeys to an empty array", () => {
+  it("defaults discrepancyKeys to an empty array", () => {
     const result = billVerificationSchema.safeParse({
       outcome: "bill_not_found",
-      safeMessage: "We could not find this bill number in hospital records.",
+      message: "We could not find this bill number in hospital records.",
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.discrepancyFieldKeys).toEqual([]);
+      expect(result.data.discrepancyKeys).toEqual([]);
     }
   });
 
-  it("rejects an empty or missing safe message", () => {
-    expect(billVerificationSchema.safeParse({ ...base, outcome: "verified", safeMessage: "" }).success).toBe(false);
-    const withoutMessage = { discrepancyFieldKeys: base.discrepancyFieldKeys };
+  it("rejects an empty or missing message", () => {
+    expect(billVerificationSchema.safeParse({ ...base, outcome: "verified", message: "" }).success).toBe(false);
+    const withoutMessage = { discrepancyKeys: base.discrepancyKeys };
     expect(billVerificationSchema.safeParse({ ...withoutMessage, outcome: "verified" }).success).toBe(false);
   });
 });

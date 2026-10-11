@@ -59,7 +59,7 @@ type (compile-time shape) with matching names.
 | `financialFieldCandidateSchema` | `FinancialFieldCandidate` | Member 2 | Same, but `confirmedByUser` is literal `false` — use for raw model output so AI can never confirm a value. |
 | `financialFieldConfirmationSchema` | `FinancialFieldConfirmation` | Member 3 (backend) | The only schema that accepts `confirmedByUser: true`; reserve for the future authenticated confirmation endpoint. |
 | `financialFieldsSchema` | `FinancialFields` | Members 3 & 4 | Exactly the five tracked fields. |
-| `documentFinancialsSchema` | `DocumentFinancials` | Members 3 & 4 | Five fields + `currency: "INR"` + `warnings`. |
+| `documentFinancialsSchema` | `DocumentFinancials` | Members 3 & 4 | Five candidate fields + `currency: "INR"` + `documentWarnings`. Uses `financialFieldCandidateSchema` so `confirmedByUser` is always `false`. |
 | `explanationSchema` | `Explanation` | Member 2 (AI stage) | Validate a generated explanation; enforces the required notice and traceable facts/dates. |
 | `callbackRequestSchema` | `CallbackRequest` | Member 3 | Validate a patient's callback submission (explicit consent, no client-supplied ticket metadata). |
 | `callbackTicketSchema` | `CallbackTicket` | Member 4 (database) | Validate the stored ticket row (server-generated id/timestamp/status). |
