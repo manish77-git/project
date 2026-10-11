@@ -1,5 +1,13 @@
 # Stage 2 Final Report — Shared Types, Zod Schemas & Tests
 
+> **Historical report — note added 2026-10-12.** This is a point-in-time record
+> of the schema stage; the numbers below are as they were then. The commit hash
+> `738ff09` was later rewritten to `8a1c827` when the Codebuff co-author trailer
+> was removed from the commit message (file contents byte-identical, same tree).
+> The suite/test counts have also moved on: the repository now has **75 tests
+> across 6 files** (the schemas plus `GET /api/health`). For current status see
+> [TEST_PLAN.md](TEST_PLAN.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+
 **Commit:** `738ff09` — `feat: add shared Zod data-contract schemas with tests`
 **Status:** pushed to `origin/main` (fast-forward). API endpoints, Gemini,
 authentication, and database work were deliberately **not** started.

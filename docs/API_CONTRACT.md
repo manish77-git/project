@@ -1,11 +1,37 @@
 # API Contract — Patient Financial Navigator
 
-**Status: this contract describes the shared data shapes implemented in
-`src/lib/schemas/`. It does NOT mean any endpoint exists yet.**
+**Status: one endpoint is implemented — `GET /api/health`, documented below.
+Everything else in this file describes the shared data shapes implemented in
+`src/lib/schemas/`; it does NOT mean an endpoint exists for them.**
 
-All endpoints listed in [Planned Endpoints](#planned-endpoints) are **planned**
-and **not implemented**. What IS implemented today is the validation layer:
-Zod schemas + inferred TypeScript types exported from `@/lib/schemas`.
+Implemented today: the validation layer (Zod schemas + inferred TypeScript types
+exported from `@/lib/schemas`) and the liveness endpoint. Every endpoint listed
+in [Planned endpoints](#planned-endpoints) is **planned and not implemented**.
+
+## Implemented endpoints
+
+### `GET /api/health`
+
+Route handler: `src/app/api/health/route.ts` (exported `GET`).
+
+- **Purpose:** liveness. It answers "is the service process serving requests?".
+- **Request:** no parameters, no query string, no body, no headers, no auth.
+- **Response:** `200` with `application/json`:
+
+  ```json
+  { "status": "ok", "service": "patient-financial-navigator" }
+  ```
+
+- **Errors:** none. There is no failure path and no status other than `200`.
+- **Deliberately shallow:** it reads no environment variables, API keys,
+  database credentials or internal configuration, and performs no I/O — so a
+  `200` proves the process is answering, **not** that a database or any
+  dependency is reachable. It is statically prerendered at build time (shown as
+  `○ /api/health` in `npm run build` output) because the body is a constant.
+- **Tested by:** `src/app/api/health/route.test.ts` (4 tests) — status `200`,
+  JSON content type, an exact body of those two string fields, and no extra keys
+  or anything matching `key|secret|token|password|stack|trace|env` in the
+  values.
 
 ## Ground rules
 
@@ -157,18 +183,22 @@ valid `"new"` ticket from a validated request.
 
 ## Planned endpoints
 
-> **None of these are implemented.** They are listed so schema usage stays
-> consistent when Members 2–4 build them in later stages.
+> **Every endpoint in this table is PLANNED — NOT IMPLEMENTED.** Only
+> `GET /api/health` exists. The rows are listed so schema usage stays consistent
+> when Members 2–4 build them in later stages; paths are proposals, not settled
+> routes.
 
-| Method & path (proposed) | Purpose | Schema to validate with |
-| --- | --- | --- |
-| `POST /api/identify` | Bill image → identification candidates | `billIdentificationSchema` |
-| `POST /api/verify` | Check bill against hospital records | `billVerificationSchema` |
-| `GET /api/financials/:recordId` | Authorized financial detail | `documentFinancialsSchema` |
-| `POST /api/explain` | Generate patient explanation | `explanationSchema` |
-| `POST /api/callback` | Submit callback request | `callbackRequestSchema` → `createCallbackTicket` |
-| `POST /api/financials/confirm` | Patient confirms a field | `financialFieldConfirmationSchema` |
+| Method & path (proposed) | Purpose | Status | Schema to validate with |
+| --- | --- | --- | --- |
+| `POST /api/identify` | Bill image → identification candidates | **PLANNED — NOT IMPLEMENTED** | `billIdentificationSchema` |
+| `POST /api/verify` | Check bill against hospital records | **PLANNED — NOT IMPLEMENTED** | `billVerificationSchema` |
+| `GET /api/financials/:recordId` | Authorized financial detail | **PLANNED — NOT IMPLEMENTED** | `documentFinancialsSchema` |
+| `POST /api/explain` | Generate patient explanation | **PLANNED — NOT IMPLEMENTED** | `explanationSchema` |
+| `POST /api/callback` | Submit callback request | **PLANNED — NOT IMPLEMENTED** | `callbackRequestSchema` → `createCallbackTicket` |
+| `POST /api/financials/confirm` | Patient confirms a field | **PLANNED — NOT IMPLEMENTED** | `financialFieldConfirmationSchema` |
+| Access-code issue / redeem | Authentication for a bill | **PLANNED — NOT IMPLEMENTED**; no schema or storage designed yet | — (no schema exists) |
 
 All future endpoints must additionally enforce authentication, authorization,
-and same-origin checks before touching protected data. Gemini, Supabase,
-auth, and endpoint wiring are explicitly out of scope for this stage.
+and same-origin checks before touching protected data; `GET /api/health` is the
+only intentionally public route. Gemini, Supabase, auth, access codes and
+endpoint wiring are explicitly out of scope so far.
