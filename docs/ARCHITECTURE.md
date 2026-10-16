@@ -4,11 +4,13 @@ High-level overview. The data shapes themselves live in
 [API_CONTRACT.md](API_CONTRACT.md); this page explains how the pieces fit and —
 importantly — **what is real today versus planned**.
 
-**Stage status:** the shared data contract (Zod schemas + tests) and one
-liveness endpoint (`GET /api/health`) are implemented. There is **no** AI
-integration, **no** database, **no** authentication, **no** access codes and
-**no** verification logic. The user interface is still the Create Next App
-starter page.
+**Stage status:** the shared data contract (Zod schemas + tests), a liveness
+endpoint (`GET /api/health`) and **bill identification** (`POST
+/api/bills/identify` — image upload read by a local OCR engine, or a typed bill
+number) are implemented. There is **no** GenAI/vision provider, **no** database,
+**no** authentication, **no** access codes, **no** verification logic, and
+identification has **no UI** behind it. The user interface is still the Create
+Next App starter page.
 
 ## Purpose
 
@@ -26,6 +28,7 @@ may see them.
 | Framework | Next.js 16 (App Router, route handlers) |
 | Language | TypeScript (strict) |
 | Validation | Zod 4 |
+| OCR | `tesseract.js` 7 (Tesseract 5 → WASM, in-process, no API key) |
 | Tests | Vitest 5 |
 | Styling | Tailwind CSS 4 |
 | Linting | ESLint 9 |
@@ -35,10 +38,11 @@ may see them.
 
 | Component | Where | State |
 | --- | --- | --- |
-| Web UI (upload, results, explanation) | `src/app/` | **Planned.** Only the starter page exists. |
+| Web UI (upload, results, explanation) | `src/app/` | **Planned.** Only the starter page exists; the identification endpoint has no caller. |
 | Data contract (schemas + types) | `src/lib/schemas/` | **Implemented**, 6 modules + tests, exported from `@/lib/schemas`. |
-| HTTP API | `src/app/api/` | **Implemented:** `GET /api/health` only. All other endpoints are planned. |
-| Bill identification (AI vision) | — | **Planned.** No provider SDK is installed. |
+| HTTP API | `src/app/api/` | **Implemented:** `GET /api/health`, `POST /api/bills/identify`. All other endpoints are planned. |
+| Bill identification (upload → text → candidates) | `src/lib/identification/` | **Implemented** with a local OCR engine: image validation, OCR port, text→candidate extraction, HTTP handler. No AI provider. |
+| Bill identification (AI vision) | — | **Planned.** No provider SDK is installed; the OCR port is the seam where one would be added. |
 | Bill verification against hospital records | — | **Planned.** No hospital data source exists. |
 | Persistence | — | **Planned.** No database client or tables. |
 | Authentication / access codes | — | **Planned.** Nothing issues, stores or checks a code. |
@@ -53,8 +57,9 @@ from leaking data or inventing a shape.
 Nothing below is wired end to end yet; the arrows are the design intent.
 
 1. **Upload a bill image.**
-2. **Identify** — the document is read and the hospital name, hospital
-   identifier and bill number are extracted as *candidates*.
+2. **Identify** — the document is read and the hospital name and bill number are
+   extracted as *candidates* (`POST /api/bills/identify`, implemented). The
+   hospital *identifier* is deliberately not extracted yet.
 3. **Authenticate** — the patient proves they may see this bill (the planned
    access-code step, tied to the issuing hospital/bill).
 4. **Verify** — the identified details are checked against the hospital's
@@ -90,7 +95,7 @@ rather than in prose:
 
 | Concept | Question it answers | Vocabulary | State |
 | --- | --- | --- | --- |
-| **Bill identification** | What does this document appear to say? | `identificationStatus`: `identified`, `partial`, `unreadable_image`, `invalid_input` | Schema implemented; extraction not implemented. |
+| **Bill identification** | What does this document appear to say? | `identificationStatus`: `identified`, `partial`, `unreadable_image`, `invalid_input` | **Implemented** (`src/lib/identification/`) — schema, OCR extraction and endpoint. |
 | **Access-code authentication** | May this person see this bill at all? | No schema yet. | Planned; nothing implemented. |
 | **Bill verification** | Does the hospital's record match this bill? | Four outcomes: `verified`, `amounts_differ`, `bill_not_found`, `hospital_not_registered` | Schema implemented; verification logic not implemented. |
 
@@ -119,8 +124,8 @@ existing docs:
 | Member | Owns | Current state |
 | --- | --- | --- |
 | **Member 1** | Shared data contract and documentation: `src/lib/schemas`, the API contract, test plan, repository hygiene. | ✅ Delivered (schemas + tests + docs). |
-| **Member 2** | AI pipeline: bill image extraction, identification, verification against records, explanation generation. | ⛔ Not started; provider not chosen or installed. |
-| **Member 3** | Backend and endpoints: route handlers, authentication, same-origin checks, callback submission, patient confirmation, access codes. | ⛔ Not started; only `/api/health` exists. |
+| **Member 2** | AI pipeline: bill image extraction, identification, verification against records, explanation generation. | 🟡 Identification extraction shipped using **local OCR** (no AI provider); verification and explanations not started. |
+| **Member 3** | Backend and endpoints: route handlers, authentication, same-origin checks, callback submission, patient confirmation, access codes. | 🟡 `POST /api/bills/identify` shipped; authentication, same-origin checks and the remaining endpoints not started. |
 | **Member 4** | Data layer and support tooling: persistence, ticket storage, support dashboard. | ⛔ Not started; no database. |
 
 Member 1's scope is inferred from this stage's deliverables and should be
@@ -133,12 +138,39 @@ confirmed with the team; the other three match the member annotations already in
   `@/` alias, `src/**/*.test.ts`).
 - Run: `npm test` (`npm run test:watch` for watch mode).
 - All fixtures are **synthetic** — no credentials, no real hospital documents.
-- Current status: **75 tests across 6 files, all passing** (schemas plus the
-  health route). Details and gaps: [TEST_PLAN.md](TEST_PLAN.md).
+- Current status: **162 tests across 11 files, all passing** (schemas, the
+  health route, and the identification module).
+- `npm run test:ocr` (separate config, `vitest.ocr.config.mts`) runs **8 more
+tests against the real OCR engine** and real PNG/JPEG files; it is kept out of
+`npm test` because the first run downloads traineddata. Details and gaps:
+[TEST_PLAN.md](TEST_PLAN.md).
 
-## Roadmap (in order, none started)
+## Identification pipeline (implemented)
 
-Access codes → API endpoints (identify, verify, financials, callback) →
-AI vision extraction → persistence → authentication/authorization hardening →
-explanation generation → support dashboard. Each stage must validate its inputs
-with the existing schemas and keep the invariants above intact.
+```
+POST /api/bills/identify
+  └─ handler.ts        content type → multipart | JSON; maps outcomes to HTTP
+       └─ service.ts   validates the upload, runs OCR, validates the result
+            ├─ image-input.ts      magic-byte sniffing, type + size limits
+            ├─ ocr.ts              the OcrEngine port (engine-agnostic)
+            │    └─ tesseract-engine.ts   real engine: Tesseract via WASM
+            └─ extract.ts          text → candidates, status, warnings
+```
+
+Decisions worth keeping: the OCR engine sits behind a port so the pipeline and
+its tests need no real engine; `extract.ts` is pure and engine-free; the service
+parses every result with `billIdentificationSchema` before it leaves, so the
+published contract — not this code — decides the response shape; and the module
+has **no dependency on verification**, which lets the two stages be built and
+tested on their own.
+
+## Roadmap (in order)
+
+1. ~~Bill identification (upload, OCR, candidates, endpoint)~~ — **done**.
+2. Access codes → 3. verification against hospital records → 4. authorized
+financials → 5. AI vision extraction (replacing or supplementing OCR) →
+6. persistence → 7. authentication/authorization hardening → 8. explanation
+generation → 9. support dashboard.
+
+Each stage must validate its inputs with the existing schemas and keep the
+invariants above intact.

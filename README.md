@@ -10,9 +10,10 @@ questions. The app is designed for people who may not know what "insurance
 approved but not paid" means, or why the amount due on the bill differs from
 what they expected.
 
-**Status: early. Only the shared data contract (Zod schemas) and one health
-endpoint exist today.** Read [Implemented](#implemented-today) carefully before
-assuming a feature is available — nothing below is aspirational.
+**Status: early. The shared data contract (Zod schemas), a health endpoint and
+bill identification (image upload + OCR, or a typed bill number) exist today.**
+Read [Implemented](#implemented-today) carefully before assuming a feature is
+available — nothing below is aspirational.
 
 ## Tech stack
 
@@ -21,13 +22,16 @@ assuming a feature is available — nothing below is aspirational.
 | Framework | Next.js 16 (App Router, Turbopack build) |
 | Language | TypeScript (strict) |
 | Validation | Zod 4 |
+| OCR (bill identification) | `tesseract.js` 7 — Tesseract 5 compiled to WASM, run locally in Node |
 | Tests | Vitest 5 |
 | Styling | Tailwind CSS 4 |
 | Linting | ESLint 9 (`eslint-config-next`) |
 | Runtime | Node.js ≥ 22.12 (Vitest 5 requirement; Next 16 needs ≥ 20.9) |
 
-No AI provider, database, or auth library is installed. `dependencies` contains
-only `next`, `react`, `react-dom` and `zod`.
+`dependencies` contains `next`, `react`, `react-dom`, `zod` and `tesseract.js`.
+No GenAI provider, database, or auth library is installed: identification reads
+text with a local OCR engine (no API key, no network call at request time), and
+verification against hospital records does not exist yet.
 
 ## Implemented today
 
@@ -43,6 +47,12 @@ Verified by running the checks listed in [Quality checks](#quality-checks) on
   - callback request + stored ticket (`callback.ts`)
   - shared primitives: language, currency, decimal-string money, page numbers
     (`common.ts`)
+- **`POST /api/bills/identify`** — bill identification from an uploaded image
+  (PNG/JPEG/BMP, ≤ 8 MB) or from a typed bill number. Returns exactly the
+  `billIdentificationSchema` shape: hospital name candidate, bill number
+  candidate, identification status and warnings. It reads **no** amounts,
+  insurance details or diagnoses, and returns none. See
+  [docs/API_CONTRACT.md](docs/API_CONTRACT.md#post-apibillsidentify).
 - **`GET /api/health`** — fixed liveness JSON (`{"status":"ok","service":...}`),
   no env vars, no I/O, no secrets.
 - **Project tooling** — strict TypeScript, ESLint, Vitest, Tailwind, App Router
@@ -56,8 +66,10 @@ Verified by running the checks listed in [Quality checks](#quality-checks) on
 
 Do not treat any of these as working. Each is documented as a target only:
 
-- Bill image upload and AI (Gemini) vision extraction — **not implemented**.
-- Bill identification endpoint (`POST /api/identify`) — **not implemented**.
+- Gemini (or any cloud vision model) bill extraction — **not implemented**.
+  What exists is a *local* OCR engine (`tesseract.js`), which reads printed text
+  and cannot interpret layout, handwriting or scans the way a vision model can.
+  See [limitations](#bill-identification-limitations).
 - Access-code authentication for a bill — **not implemented**; no access-code
   schema or storage exists yet.
 - Bill verification against hospital records (`POST /api/verify`) —
@@ -73,8 +85,11 @@ Do not treat any of these as working. Each is documented as a target only:
 - Supabase (or any) persistence — **not implemented**; no client, no tables.
 - Authentication, authorization and same-origin checks — **not implemented**.
 - Hospital support dashboard — **not implemented**.
-- Any test that exercises a real image, AI call, database, or expiry/lockout
-  flow — **not implemented**. See [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
+- Any test that exercises an AI call, a database, or an expiry/lockout flow —
+  **not implemented**. Real-image OCR is covered by `npm run test:ocr` (see
+  [bill identification limitations](#bill-identification-limitations)).
+- Any frontend work: the identification endpoint has **no UI** behind it yet —
+  it is callable over HTTP only. See [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 
 ## Prerequisites
 
@@ -98,6 +113,26 @@ curl http://localhost:3000/api/health
 # {"status":"ok","service":"patient-financial-navigator"}
 ```
 
+Identify a bill from an image, or from a typed bill number:
+
+```bash
+curl -F "billImage=@bill.png;type=image/png" http://localhost:3000/api/bills/identify
+# {"hospitalNameCandidate":"CITY GENERAL HOSPITAL","hospitalIdentifierCandidate":null,
+#  "billNumberCandidate":"INV-2026-0042","identificationStatus":"identified","warnings":[]}
+
+curl -H 'content-type: application/json' \
+  -d '{"billNumber":"INV-2026-0042"}' http://localhost:3000/api/bills/identify
+# {"hospitalNameCandidate":null,"hospitalIdentifierCandidate":null,
+#  "billNumberCandidate":"INV-2026-0042","identificationStatus":"partial",
+#  "warnings":["This bill number was entered by hand and has not been read from the bill image.",
+#              "The hospital name could not be read from this image."]}
+```
+
+The first OCR request in a fresh environment downloads Tesseract's English
+traineddata (~15 MB) into the OS temp directory; it is cached there afterwards.
+Override the location with the optional `langPath`/`cachePath` engine options in
+`src/lib/identification/tesseract-engine.ts` for an offline deployment.
+
 ## Quality checks
 
 Run these from the project root. Last verified results (2026-10-12) are shown so
@@ -105,13 +140,37 @@ you can tell a regression from a pre-existing failure:
 
 | Command | What it does | Last verified |
 | --- | --- | --- |
-| `npm test` | Vitest, single run | ✅ 75 tests / 6 files passed, exit 0 |
+| `npm test` | Vitest, single run (hermetic — no network, no real OCR) | ✅ 162 tests / 11 files passed, exit 0 |
+| `npm run test:ocr` | Vitest against the **real** OCR engine and real image files | ✅ 8 tests / 1 file passed, exit 0 |
 | `npm run test:watch` | Vitest in watch mode | — (interactive) |
 | `npm run lint` | ESLint over the repo | ✅ 0 errors, 0 warnings, exit 0 |
 | `npx tsc --noEmit` | TypeScript type-check | ✅ exit 0 |
-| `npm run build` | Next.js production build | ✅ exit 0, 3 routes (`/`, `/_not-found`, `/api/health`) |
+| `npm run build` | Next.js production build | ✅ exit 0, 4 routes (`/`, `/_not-found`, `/api/bills/identify`, `/api/health`) |
 
-There is no CI pipeline and no coverage threshold configured.
+`npm test` never loads the OCR engine: suites inject a fake engine, so they run
+offline in about 2 seconds. `npm run test:ocr` is kept separate because the
+first run downloads traineddata. There is still no CI pipeline, and no coverage
+threshold configured.
+
+## Bill identification limitations
+
+Stated plainly, because these decide whether identification is useful for a real
+patient:
+
+- The engine is **printed-text OCR**, not a vision model. Handwritten bills,
+  heavy rotation, poor lighting, creases and low-resolution photos will read
+  badly — and when it cannot read, it reports `unreadable_image` rather than
+  guessing.
+- A hospital is only recognised when its line carries a hospital-ish word
+  (`Hospital`, `Clinic`, `Medical Centre`, …). A bill printed with just a brand
+  name is reported as `partial`, with the bill number if one could be read.
+- Text below a legibility/confidence floor is treated as unreadable. The floor
+  lives in `src/lib/identification/extract.ts` and is tunable.
+- `hospitalIdentifierCandidate` is always `null`: this stage extracts the
+  hospital **name** and the bill number only.
+- The endpoint has no authentication, no same-origin check and no rate limit.
+  It returns nothing the caller did not send, but it is currently open to abuse
+  as unpaid CPU work; hardening belongs with the access-code stage.
 
 ## Environment variables
 

@@ -8,7 +8,8 @@ intentions.
 
 | Command | Scope |
 | --- | --- |
-| `npm test` | Vitest single run (all suites) |
+| `npm test` | Vitest single run (all hermetic suites — no network, no real OCR) |
+| `npm run test:ocr` | Vitest against the **real** OCR engine and real image files |
 | `npm run test:watch` | Vitest watch mode |
 | `npm run lint` | ESLint |
 | `npx tsc --noEmit` | TypeScript type-check |
@@ -17,17 +18,33 @@ intentions.
 No CI runs these automatically and there is no coverage threshold, so **run them
 locally before pushing** — see [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md).
 
-## Current status (last verified 2026-10-12)
+## Current status (last verified 2026-10-16)
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Unit tests | `npm test` | ✅ **75 passed / 75**, 6 files, exit 0 |
+| Unit tests | `npm test` | ✅ **162 passed / 162**, 11 files, exit 0 |
+| Real-OCR tests | `npm run test:ocr` | ✅ **8 passed / 8**, 1 file, exit 0 |
 | Lint | `npm run lint` | ✅ 0 errors, 0 warnings, exit 0 |
 | Type-check | `npx tsc --noEmit` | ✅ exit 0 |
-| Build | `npm run build` | ✅ exit 0, routes `/`, `/_not-found`, `/api/health` |
+| Build | `npm run build` | ✅ exit 0, routes `/`, `/_not-found`, `/api/bills/identify`, `/api/health` |
 
 **No test has failed or been skipped in the recorded run.** Nothing below is
 reported as passing unless it was executed.
+
+### Why there are two test commands
+
+`npm test` must stay hermetic and fast, so it never loads the OCR engine: the
+suites inject a fake engine (`src/lib/identification/__fixtures__/fake-ocr-engine.ts`).
+That proves the pipeline, but it cannot prove the engine works. `npm run
+test:ocr` closes that gap by running the real Tesseract engine over real PNG and
+JPEG files, and is separate because the first run downloads ~15 MB of
+traineddata into the OS temp directory.
+
+**Measured on 2026-10-16** (`npm run test:ocr`, real engine, real files): both
+`synthetic-bill.png` and `synthetic-bill.jpg` read back exactly — `CITY GENERAL
+HOSPITAL` / `Bill No: INV-2026-0042` — at mean confidence 95, and identify as
+`identified`; a noise image reports `unreadable_image` at confidence 8. Fixture
+provenance: `src/lib/identification/__fixtures__/README.md`.
 
 ### Passing suites
 
@@ -39,19 +56,32 @@ reported as passing unless it was executed.
 | `src/lib/schemas/callback.test.ts` | 16 | Consent must be explicit `true` (missing and `false` both rejected); client-supplied ticket metadata rejected; server ticket shape and `createCallbackTicket`; language and callback-time enums. |
 | `src/lib/schemas/explanation.test.ts` | 12 | Required literal notice; traceable record reference and facts; language codes; malformed references rejected. |
 | `src/app/api/health/route.test.ts` | 4 | `GET /api/health`: 200, JSON content type, exact two-field body, **no extra keys or secret-looking values**. |
+| `src/lib/identification/image-input.test.ts` | 12 | Magic-byte type sniffing (PNG/JPEG/BMP vs text/PDF/truncated); empty, oversized and non-image uploads rejected; **content wins over the client-declared type**; `content-length` pre-check. |
+| `src/lib/identification/extract.test.ts` | 24 | OCR text → candidates: labelled and unlabelled bill numbers; dates, phone numbers, GSTINs and amounts are **not** mistaken for bill numbers; label-only lines are not hospital names; the top-of-page search window; `unreadable_image` / `partial` / `invalid_input` selection; typed-number fallback, match and disagreement. |
+| `src/lib/identification/service.test.ts` | 23 | Image path and manual path end to end with a fake engine: `identified`, `unreadable_image`, `partial`; engine failure vs unexpected failure; every input rejection; **no protected key or value in any result**; manual entry marked as hand-typed. |
+| `src/lib/identification/handler.test.ts` | 24 | The HTTP contract: status codes 200/400/413/415/500/503, `cache-control: no-store`, exact response keys, error bodies, multipart vs JSON dispatch, the fallback path, and leak assertions over a page containing amounts and a diagnosis. Also that the multipart typed fallback obeys the **same** bill-number rule as JSON entry — same `400` body for the same bad value, no silent truncation of an over-long number, and no OCR work spent on a rejected request. |
+| `src/lib/identification/module-boundaries.test.ts` | 4 | Identification has **no dependency on verification** (no import, no verification outcome vocabulary), validates through `billIdentificationSchema`, and the route exports `POST` only. |
+| `tests/ocr/real-ocr.test.ts` (opt-in) | 8 | The **real** engine over real PNG and JPEG files: exact text read, `identified` for both formats, no protected value in the response, blank and noise images never fabricated. |
 
 All fixtures are **synthetic**. No test contacts an AI provider, a database, or
-the network, and no real hospital document is used.
+the network, and no real hospital document is used. Images are either generated
+in memory (`__fixtures__/synthetic-image.ts`) or rendered from invented text
+(`__fixtures__/synthetic-bill.png|.jpg`).
 
 ### Not implemented (not a failure — no test exists)
 
 These areas have **no tests because the code does not exist yet**:
 
-- Any end-to-end or UI test; the UI is still the starter page.
-- Any test involving a real bill image, OCR/AI call, or provider mocking.
-- Any endpoint other than `GET /api/health`.
+- Any end-to-end or UI test; the UI is still the starter page, and
+  `POST /api/bills/identify` has no caller in the app.
+- Any test of a real, badly photographed bill: rotation, shadows, creases,
+  handwriting, multi-page documents. The OCR tests use clean synthetic pages.
+- Any AI/vision provider call (none is integrated).
+- Verification, authorized financials, explanations, callbacks, the support
+  dashboard — no endpoint exists for any of them.
 - Any persistence, authentication, access-code, expiry, or lockout behaviour.
-- Any callback delivery or support-dashboard behaviour.
+- Same-origin enforcement, rate limiting and abuse handling on
+  `POST /api/bills/identify` (it is public and unmetered today).
 
 ### Could not run
 
@@ -63,17 +93,17 @@ dependencies, offline install, unavailable provider credentials), record it as
 
 Each item must exist before the corresponding feature is described as working.
 
-1. **Unreadable or damaged bills** — blurry/skewed/torn/cropped images, wrong
-   file type, oversized file, multi-page bills, and a valid image with no bill in
-   it. Expected: `identificationStatus: "unreadable_image"` or
-   `"invalid_input"`, never a fabricated value, and never a verification
-   outcome.
-2. **Information leakage** — assert that no response to an unauthenticated or
+1. **Unreadable or damaged bills** — *partly covered*: wrong file type,
+   oversized file, and a valid image with nothing legible in it are tested
+   (`image-input.test.ts`, `real-ocr.test.ts`). Still to add: blurry, skewed,
+   torn, cropped and multi-page images, and a real photograph with no bill in
+   it. Expected: `identificationStatus: "unreadable_image"` or `"invalid_input"`,
+   never a fabricated value, and never a verification outcome.
+2. **Information leakage** — *covered for identification* (unit, HTTP and real
+   OCR levels, including a page that genuinely contains amounts). Still to add
+   for verification and financials: that no response to an unauthenticated or
    unverified caller contains amounts, insurance details, diagnoses, other
-   patients' data, stack traces, SQL errors, or environment values. Include
-   negative tests that send amount-like keys and confirm rejection by the strict
-   schemas (the schema suites already do this at unit level; endpoint tests must
-   repeat it over HTTP).
+   patients' data, stack traces, SQL errors, or environment values.
 3. **Access-code expiry and lockout** — correct code accepted once; expired code
    rejected; reused single-use code rejected; too many wrong attempts triggers
    lockout and the lockout itself expires; error messages do not reveal whether a
