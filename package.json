@@ -8,12 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:ocr": "vitest run --config vitest.ocr.config.mts"
   },
   "dependencies": {
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "tesseract.js": "^7.0.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
