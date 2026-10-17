@@ -12,6 +12,7 @@
     "test:ocr": "vitest run --config vitest.ocr.config.mts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "next": "16.4.0",
     "pg": "^8.23.1",
     "react": "19.3.0",
