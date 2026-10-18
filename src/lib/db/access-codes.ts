@@ -16,7 +16,9 @@ export type RedeemResult =
   | { status: "invalid"; attemptsLeft: number }
   | { status: "locked"; lockedUntil: string }
   | { status: "expired" }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  /** Only returned when the caller asked for `singleUse`. */
+  | { status: "spent" };
 
 function toDate(value: unknown): Date | null {
   if (value instanceof Date) return value;
@@ -73,17 +75,24 @@ export async function issueAccessCode(
  * - Known limit: attempts are counted read-then-write, so many simultaneous
  *   guesses could slip a few extra tries past the counter. The IP rate limit
  *   covers that.
+ *
+ * `singleUse: true` is what an access-code flow wants: a code that has already
+ * been redeemed is refused as "spent" instead of being accepted again. The
+ * default (false) keeps the original behaviour of recording first use while
+ * still accepting the code, which the tests below pin down. The check is added
+ * just before the comparison, so the order of every existing refusal — missing,
+ * expired, locked — is unchanged.
  */
 export async function redeemAccessCode(
   db: Queryable,
   billId: string,
   code: string,
-  options: { now?: Date } = {},
+  options: { now?: Date; singleUse?: boolean } = {},
 ): Promise<RedeemResult> {
   const now = options.now ?? new Date();
 
   const { rows } = await db.query(
-    `select id, code_hash, expires_at, failed_attempts, locked_until
+    `select id, code_hash, expires_at, failed_attempts, locked_until, redeemed_at
        from access_codes
       where bill_id = $1
       order by created_at desc
@@ -102,6 +111,8 @@ export async function redeemAccessCode(
   if (lockedUntil && lockedUntil > now) {
     return { status: "locked", lockedUntil: lockedUntil.toISOString() };
   }
+
+  if (options.singleUse && toDate(row.redeemed_at)) return { status: "spent" };
 
   const matches = await compare(code.trim().toUpperCase(), String(row.code_hash));
 

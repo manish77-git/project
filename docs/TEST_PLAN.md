@@ -8,7 +8,7 @@ intentions.
 
 | Command | Scope |
 | --- | --- |
-| `npm test` | Vitest single run (all hermetic suites — no network, no real OCR) |
+| `npm test` | Vitest single run (all hermetic suites — no network, no database, no real OCR) |
 | `npm run test:ocr` | Vitest against the **real** OCR engine and real image files |
 | `npm run test:watch` | Vitest watch mode |
 | `npm run lint` | ESLint |
@@ -18,15 +18,15 @@ intentions.
 No CI runs these automatically and there is no coverage threshold, so **run them
 locally before pushing** — see [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md).
 
-## Current status (last verified 2026-10-16)
+## Current status (last verified 2026-10-19)
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Unit tests | `npm test` | ✅ **162 passed / 162**, 11 files, exit 0 |
+| Unit tests | `npm test` | ✅ **378 passed / 378**, 30 files, exit 0 |
 | Real-OCR tests | `npm run test:ocr` | ✅ **8 passed / 8**, 1 file, exit 0 |
 | Lint | `npm run lint` | ✅ 0 errors, 0 warnings, exit 0 |
 | Type-check | `npx tsc --noEmit` | ✅ exit 0 |
-| Build | `npm run build` | ✅ exit 0, routes `/`, `/_not-found`, `/api/bills/identify`, `/api/health` |
+| Build | `npm run build` | ✅ exit 0, 9 routes: `/`, `/_not-found`, `/api/health`, `/api/bills/identify`, `/api/bills/access/challenge`, `/api/bills/access/verify`, `/api/bills/verify`, `/api/bills/financials`, `/api/bills/explain` |
 
 **No test has failed or been skipped in the recorded run.** Nothing below is
 reported as passing unless it was executed.
@@ -51,37 +51,63 @@ provenance: `src/lib/identification/__fixtures__/README.md`.
 | Suite | Tests | What it covers |
 | --- | --- | --- |
 | `src/lib/schemas/identification.test.ts` | 8 | Identification accepts the four statuses; `null` (not `""`) for missing values; **rejects amounts/insurance/payment/diagnosis fields**, i.e. no information leakage through the identification shape. |
+| `src/lib/schemas/access.test.ts` | 10 | Strict challenge/answer requests (no bill number on the answer, no verdict flags); bill-number and code character rules; grant shape; stored digest must be 64 hex chars. |
 | `src/lib/schemas/verification.test.ts` | 7 | Exactly four outcomes; `unreadable_image` and identification statuses rejected as outcomes; discrepancy *keys* only, never amounts; message required. |
 | `src/lib/schemas/financial.test.ts` | 28 | Status/amount pairing (`found`⇒non-null, `missing`⇒`null`, never `"0"`); invalid money strings rejected; floats rejected; page-number rules; `confirmedByUser` defaults false and **cannot be true in model output**. |
 | `src/lib/schemas/callback.test.ts` | 16 | Consent must be explicit `true` (missing and `false` both rejected); client-supplied ticket metadata rejected; server ticket shape and `createCallbackTicket`; language and callback-time enums. |
 | `src/lib/schemas/explanation.test.ts` | 12 | Required literal notice; traceable record reference and facts; language codes; malformed references rejected. |
+| `src/lib/schemas/explanation-response.test.ts` | 8 | The public response requires exactly five sections, one per tracked field; rejects unknown fields, duplicate/missing fact associations, status/amount contradictions, numeric amounts and confirmation flags. |
 | `src/app/api/health/route.test.ts` | 4 | `GET /api/health`: 200, JSON content type, exact two-field body, **no extra keys or secret-looking values**. |
 | `src/lib/identification/image-input.test.ts` | 12 | Magic-byte type sniffing (PNG/JPEG/BMP vs text/PDF/truncated); empty, oversized and non-image uploads rejected; **content wins over the client-declared type**; `content-length` pre-check. |
 | `src/lib/identification/extract.test.ts` | 24 | OCR text → candidates: labelled and unlabelled bill numbers; dates, phone numbers, GSTINs and amounts are **not** mistaken for bill numbers; label-only lines are not hospital names; the top-of-page search window; `unreadable_image` / `partial` / `invalid_input` selection; typed-number fallback, match and disagreement. |
 | `src/lib/identification/service.test.ts` | 23 | Image path and manual path end to end with a fake engine: `identified`, `unreadable_image`, `partial`; engine failure vs unexpected failure; every input rejection; **no protected key or value in any result**; manual entry marked as hand-typed. |
-| `src/lib/identification/handler.test.ts` | 24 | The HTTP contract: status codes 200/400/413/415/500/503, `cache-control: no-store`, exact response keys, error bodies, multipart vs JSON dispatch, the fallback path, and leak assertions over a page containing amounts and a diagnosis. Also that the multipart typed fallback obeys the **same** bill-number rule as JSON entry — same `400` body for the same bad value, no silent truncation of an over-long number, and no OCR work spent on a rejected request. |
+| `src/lib/identification/handler.test.ts` | 24 | The HTTP contract: status codes 200/400/413/415/500/503, `cache-control: no-store`, exact response keys, error bodies, multipart vs JSON dispatch, the fallback path, and leak assertions over a page containing amounts and a diagnosis. Also that the multipart typed fallback obeys the **same** bill-number rule as JSON entry. |
 | `src/lib/identification/module-boundaries.test.ts` | 4 | Identification has **no dependency on verification** (no import, no verification outcome vocabulary), validates through `billIdentificationSchema`, and the route exports `POST` only. |
+| `src/lib/access/codes.test.ts` | 12 | Unambiguous alphabet; grouping and normalisation (case, spaces, dashes); deterministic digests; a digest never contains the code; the secret changes the digest, so a store leak alone cannot be brute-forced; short/absent secret refused. |
+| `src/lib/access/service.test.ts` | 19 | Challenge bound to its bill; 5-minute TTL; three attempts then lock; **failure counters live outside the challenge**, so a fresh challenge inherits the limit; client bucket only when identified; throttle release boundary; expired/already-answered/unknown challenge; wrong-bill, expired and spent code; ordering of checks (an expired challenge is not a free attempt). |
+| `src/lib/access/throttle.test.ts` | 7 | Limit then countdown; releases exactly at the window end; a bill is throttled for every client; a client is throttled across bills; no invented client bucket; clearing on success; the storage-managed strategy reports no local wait. |
+| `src/lib/access/code-verifier.test.ts` | 11 | Digest store: correct code spent so replay fails, wrong/expired/different-bill codes refused, case-insensitive bill match. Database store over a fake `Queryable`: unknown bill refused without reading a code, spent/expired/wrong code refused, the table's real lockout surfaced as a wait. |
+| `src/lib/access/token.test.ts` | 9 | Tokens carry a bill and a session id and **no code or bill contents**; issued tokens accepted; wrong secret, edited payload, edited signature, expiry (including exactly at expiry) and malformed input rejected; bearer-header parsing. |
+| `src/lib/access/authorization.test.ts` | 7 | A token alone is not enough: signature **and** the server-side session must agree. Missing/non-bearer header, foreign secret, unknown session, expired session, token naming another bill, and no configured secret all refused with one response. |
+| `src/lib/access/dependencies.test.ts` | 5 | The single-authority rule: with a database, the table lockout is used and **no in-memory bucket is armed**; without one, the digest store plus the in-memory throttle are used; no verifier when the secret is unusable and there is no database. |
+| `src/lib/access/handler.test.ts` | 12 | Access HTTP contract: documented challenge shape, identical answers for known and unknown bills, 400 on browser-supplied flags, 415/400/503, 429 with `Retry-After`, grant never echoes the code, uniform 401s for wrong code/expired/unknown challenge, lockout after three attempts, no challenge reuse, no verdict or retargeted bill in the answer. |
+| `src/lib/db/access-codes.test.ts` | 10 | `issueAccessCode` returns the code once and stores only its hash; `redeemAccessCode` over a fake `Queryable`: correct code accepted in any case/whitespace and resets the counter, wrong code counts an attempt, the fifth sets `locked_until`, a locked bill refuses even the right code without moving the counter, counting restarts after a lock expires, expired/spent codes count no attempt, `not_found` when the bill has no code, and `singleUse` decides whether a redeemed code is refused. |
+| `src/lib/db/queries.test.ts` | 9 | `findBill` and `findBillByNumber` trim and parameterise inputs and return `null` when nothing matches; bill lookup reads **no amounts**; financial rows return decimal strings and mark absent fields `missing`, not zero; a row that breaks the contract is rejected; `saveCallbackTicket` stores a valid request, returns a `"new"` ticket, and refuses (without touching the database) when consent is absent. |
+| `src/lib/records/mock-records.test.ts` | 7 | The synthetic set covers all four verification situations and really disagrees on the discrepancy record; it carries no field beyond the record shape (so no patient data can hide in it); every amount obeys the money contract; lookups ignore case and spacing; `listAll` returns every record; normalisation is consistent. |
+| `src/lib/verification/service.test.ts` | 17 | Four outcomes; baseline discrepancies are always counted; supplied candidates can only **add** discrepancies, so they cannot turn `amounts_differ` into `verified`; duplicate field keys refused; a named hospital that does not match means `bill_not_found`; the response never carries amounts. |
+| `src/lib/verification/handler.test.ts` | 18 | Auth gate on both endpoints; 200/400/401/404/409/415/503; financials refused before verify, released after; **every refusal path carries no figures** — discrepancies return keys only; the record is re-checked at release; `cache-control: no-store`. |
+| `src/lib/explanation/provider.test.ts` | 10 | Prompt names the language, marks missing values `missing from the record`, and forbids digits, amounts and claims; adapter sends the key in `x-goog-api-key` (never the URL), asks for the strict section schema; HTTP error → `unavailable` without the vendor body, abort → `timeout`, non-JSON/empty/truncated/blocked responses mapped safely; env factory returns null for a missing key. |
+| `src/lib/explanation/validator.test.ts` | 16 | Indian INR grouping and canonical decimal parsing (commas, `₹`/`INR`/`Rs.`, trailing zeros, rejecting exponents/negatives/Unicode digits); field-specific amount matching incl. a correct value on the wrong field; missing stays `null`, never zero; strict five-section draft shape; ASCII/Hindi/Kannada digits, currency, percentages, dates, number words and coverage/eligibility/waiver/payment claims rejected; server template renders the record. |
+| `src/lib/explanation/service.test.ts` | 13 | `en`/`hi`/`kn` accepted and passed through; unsupported languages refused before any provider call; unverified, expired, `amounts_differ`, `bill_not_found` and `hospital_not_registered` sessions refused; stale `verified` session cannot open a discrepancy; facts and record reference built from the server record; missing amounts stay `null` with warnings; provider receives **only** language and field availability; unsafe prose, model-supplied facts/`confirmedByUser` and malformed/timeout responses fall back to the template. |
+| `src/lib/explanation/handler.test.ts` | 16 | `/api/bills/explain` requires a verified bearer session; 400/401/404/409/415/503; `amounts_differ` returns keys only; verified session returns a validated 200 response whose amounts come from the record; missing key returns `503 explanation_unavailable` with no draft; unsafe drafts fall back to the template; **raw drafts and provider errors never appear publicly**; extra `isVerified`/bill fields rejected; query retargeting ignored. |
 | `tests/ocr/real-ocr.test.ts` (opt-in) | 8 | The **real** engine over real PNG and JPEG files: exact text read, `identified` for both formats, no protected value in the response, blank and noise images never fabricated. |
 
-All fixtures are **synthetic**. No test contacts an AI provider, a database, or
-the network, and no real hospital document is used. Images are either generated
-in memory (`__fixtures__/synthetic-image.ts`) or rendered from invented text
+All fixtures are **synthetic**. No test contacts a live AI provider, a PostgreSQL
+server, or the network; the database suites use a fake `Queryable`, the Gemini
+adapter uses a fake HTTP transport, and no real hospital document is used. Images are either generated in memory
+(`__fixtures__/synthetic-image.ts`) or rendered from invented text
 (`__fixtures__/synthetic-bill.png|.jpg`).
 
 ### Not implemented (not a failure — no test exists)
 
 These areas have **no tests because the code does not exist yet**:
 
-- Any end-to-end or UI test; the UI is still the starter page, and
-  `POST /api/bills/identify` has no caller in the app.
+- Any end-to-end or UI test; the UI is still the starter page, and no endpoint
+  has a caller in the app.
 - Any test of a real, badly photographed bill: rotation, shadows, creases,
   handwriting, multi-page documents. The OCR tests use clean synthetic pages.
-- Any AI/vision provider call (none is integrated).
-- Verification, authorized financials, explanations, callbacks, the support
-  dashboard — no endpoint exists for any of them.
-- Any persistence, authentication, access-code, expiry, or lockout behaviour.
-- Same-origin enforcement, rate limiting and abuse handling on
-  `POST /api/bills/identify` (it is public and unmetered today).
+- Any **live** AI/vision provider call. The Gemini HTTP adapter is tested with a
+  fake transport; the suite makes no request to Google. A one-off manual live
+  check on 2026-10-19 succeeded (2 of 3 drafts validated; 1 safely fell back to
+  the server template).
+- Callbacks, patient confirmation, and the support dashboard — no endpoint
+  exists for any of them.
+- Any test against a **real** PostgreSQL instance or a real hospital system.
+  Schema and queries are exercised with fakes; the migration is not applied by
+  any test.
+- Same-origin enforcement, CSRF protection, rate limiting and abuse handling on
+  any endpoint.
+- Patient accounts, staff authentication, and role-scoped staff access.
 
 ### Could not run
 
@@ -99,24 +125,32 @@ Each item must exist before the corresponding feature is described as working.
    torn, cropped and multi-page images, and a real photograph with no bill in
    it. Expected: `identificationStatus: "unreadable_image"` or `"invalid_input"`,
    never a fabricated value, and never a verification outcome.
-2. **Information leakage** — *covered for identification* (unit, HTTP and real
-   OCR levels, including a page that genuinely contains amounts). Still to add
-   for verification and financials: that no response to an unauthenticated or
-   unverified caller contains amounts, insurance details, diagnoses, other
-   patients' data, stack traces, SQL errors, or environment values.
-3. **Access-code expiry and lockout** — correct code accepted once; expired code
-   rejected; reused single-use code rejected; too many wrong attempts triggers
-   lockout and the lockout itself expires; error messages do not reveal whether a
-   bill exists. *Blocked until access codes are designed and implemented.*
-4. **Financial discrepancies** — `verified` vs `amounts_differ` for each of the
-   five fields, multiple simultaneous differences, missing-on-bill vs
+2. **Information leakage** — *covered for identification, verification and
+   financials* at unit and HTTP levels, including a page that genuinely contains
+   amounts and refusal paths that must carry none. Still to add: concurrency and
+   timing checks, and a scan for secrets in error paths under a real database
+   failure.
+3. **Access-code expiry and lockout** — *covered*: correct code accepted once;
+   expired and already-used codes rejected; three wrong answers lock the
+   challenge; the limit survives a new challenge; client and bill buckets; the
+   database lockout is surfaced with its real wait; refusals do not reveal
+   whether a bill exists. Still to add: a load test for concurrent redemptions
+   of one code, which the store documents as read-then-write.
+4. **Financial discrepancies** — *covered for the current record set*: each of
+   the five fields, several simultaneous differences, missing-on-bill vs
    missing-in-record, and proof that the discrepancy response carries field keys
-   but no figures.
-5. **AI explanation accuracy** — every generated figure and date traces back to
-   the verified record; no invented amounts or dates; the required notice is
-   present; all three languages; the explanation never verifies a bill and never
-   states an outcome it was not given; unreadable/ambiguous fields stay visible
-   as warnings instead of being silently guessed.
+   but no figures. Still to add: more record fixtures and a property test over
+   generated amounts.
+5. **AI explanation accuracy** — *covered for the current synthetic record*:
+   three languages; the verified-session and discrepancy gates; server-built
+   facts and field association; missing amounts stay `null`; unfamiliar amounts,
+   dates, percentages, number words and common
+   coverage/eligibility/waiver/payment-obligation claims are discarded; the
+   provider never receives amounts or bill/hospital/token/code data; the public
+   response is validated and raw drafts are not. Still to add: real recorded
+   dates to trace, a live provider call, and a review of whether prose states a
+   fact correctly as well as avoiding figures.
+
 6. **Callback consent** — submission without explicit consent is rejected;
    consent recorded with the ticket; a patient cannot inject their own ticket ID,
    status, or timestamps; rate limiting/abuse handling; that no callback reaches
