@@ -54,6 +54,39 @@ export async function findBill(
 }
 
 /**
+ * Look up a bill by its number alone — the access-code path, which has no
+ * hospital name to match on (the patient types or OCRs just a number).
+ *
+ * Bill numbers are unique per hospital, not globally, so the same number at two
+ * hospitals is ambiguous. The oldest row wins and the ambiguity is a documented
+ * limitation rather than a guess: a real deployment should carry the hospital
+ * from identification instead. This reads NO amounts.
+ */
+export async function findBillByNumber(
+  db: Queryable,
+  billNumber: string,
+): Promise<BillRecord | null> {
+  const { rows } = await db.query(
+    `select b.id as bill_id, h.id as hospital_id,
+            h.name as hospital_name, b.bill_number
+       from bills b
+       join hospitals h on h.id = b.hospital_id
+      where b.bill_number = $1
+      order by b.created_at
+      limit 1`,
+    [billNumber.trim()],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    billId: String(row.bill_id),
+    hospitalId: String(row.hospital_id),
+    hospitalName: String(row.hospital_name),
+    billNumber: String(row.bill_number),
+  };
+}
+
+/**
  * Read the five financial fields for a bill. Money comes back as decimal
  * strings (never floats). A field with no row is reported as "missing" with a
  * null amount, never as "0". The result is validated with the shared schema.

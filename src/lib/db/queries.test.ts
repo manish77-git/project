@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { findBill, getFinancials, saveCallbackTicket } from "./queries";
+import { findBill, findBillByNumber, getFinancials, saveCallbackTicket } from "./queries";
 
 // A fake database: hermetic, like the rest of `npm test`.
 function fakeDb(rows: Record<string, unknown>[]) {
@@ -41,6 +41,36 @@ describe("findBill", () => {
 
   it("returns null when nothing matches", async () => {
     expect(await findBill(fakeDb([]), "X", "NOPE-1")).toBeNull();
+  });
+});
+
+describe("findBillByNumber", () => {
+  it("finds a bill from the number alone, trimming the input", async () => {
+    const db = fakeDb([
+      {
+        bill_id: "b1",
+        hospital_id: "h1",
+        hospital_name: "CITY GENERAL HOSPITAL",
+        bill_number: "INV-2026-0042",
+      },
+    ]);
+    expect(await findBillByNumber(db, " INV-2026-0042 ")).toEqual({
+      billId: "b1",
+      hospitalId: "h1",
+      hospitalName: "CITY GENERAL HOSPITAL",
+      billNumber: "INV-2026-0042",
+    });
+    expect(db.query.mock.calls[0][1]).toEqual(["INV-2026-0042"]);
+  });
+
+  it("returns null for a number no hospital has on file", async () => {
+    expect(await findBillByNumber(fakeDb([]), "NOPE-1")).toBeNull();
+  });
+
+  it("reads no amounts — identification is not authorization", async () => {
+    const db = fakeDb([]);
+    await findBillByNumber(db, "INV-2026-0042");
+    expect(String(db.query.mock.calls[0][0])).not.toMatch(/amount|financial|rupee/i);
   });
 });
 

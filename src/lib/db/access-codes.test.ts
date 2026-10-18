@@ -111,6 +111,23 @@ describe("redeemAccessCode", () => {
       status: "not_found",
     });
   });
+
+  it("refuses a code that has already been redeemed when singleUse is set", async () => {
+    const db = fakeDb([await codeRow({ redeemed_at: NOW })]);
+    expect(
+      await redeemAccessCode(db, "b1", "DEMO-1234", { now: NOW, singleUse: true }),
+    ).toEqual({ status: "spent" });
+    // Only the select: a spent code spends no attempt and is not written again.
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  it("still accepts an already-redeemed code by default, recording first use only", async () => {
+    const db = fakeDb([await codeRow({ redeemed_at: PAST })]);
+    expect(await redeemAccessCode(db, "b1", " demo-1234 ", { now: NOW })).toEqual({
+      status: "ok",
+      accessCodeId: "c1",
+    });
+  });
 });
 
 describe("issueAccessCode", () => {

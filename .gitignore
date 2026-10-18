@@ -65,6 +65,9 @@ patient-data/
 *.csv
 !src/**/*.csv
 
+# Issued access-code digests (runtime state written by npm run access:issue)
+/data/access-codes.json
+
 # Supabase local config (future use)
 supabase/.temp/
 
