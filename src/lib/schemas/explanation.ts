@@ -8,9 +8,10 @@ import {
 import { financialFieldKeySchema } from "./financial";
 
 /**
- * Future generated explanation of a bill (plain-language summary for the
- * patient). This schema only VALIDATES an explanation object — generating it
- * with AI is a later stage and is not implemented here.
+ * Generated explanation of a bill (plain-language summary for the patient).
+ * This module validates the narrative object and the additive public response;
+ * the server-side generation and validation workflow lives in
+ * `src/lib/explanation/`.
  *
  * Traceability rules enforced by the schema:
  *   - verifiedRecordReference must point at an existing verified bill record
@@ -79,3 +80,103 @@ export const explanationSchema = z
   })
   .strict();
 export type Explanation = z.infer<typeof explanationSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Public explanation response (additive, Stage 4)
+ *
+ * The original `explanationSchema` is still the final contract for the
+ * narrative, facts, dates and notice. The response adds the five
+ * field-by-field sections a patient reads. Each section is tied to exactly
+ * one authoritative record field, and its amount is rendered server-side from
+ * that field — never from model output.
+ *
+ * Cross-field rules make the association explicit:
+ *   - exactly five sections, one per allow-listed financial field;
+ *   - no duplicate keys in either sections or facts;
+ *   - the section keys and fact keys must be the same set.
+ * ------------------------------------------------------------------ */
+
+export const explanationSectionStatusSchema = z.enum(["found", "missing"]);
+export type ExplanationSectionStatus = z.infer<
+  typeof explanationSectionStatusSchema
+>;
+
+export const explanationSectionSchema = z
+  .object({
+    fieldKey: financialFieldKeySchema,
+    /** Server-localized heading for this field. */
+    heading: z.string().trim().min(1).max(120),
+    /** Validated prose from the model (or the server template). No figures. */
+    explanation: z.string().trim().min(1).max(1000),
+    /** Rendered from the authoritative record for THIS field. */
+    amountRupees: monetaryAmountSchema.nullable(),
+    status: explanationSectionStatusSchema,
+  })
+  .strict()
+  .superRefine((section, ctx) => {
+    if (section.status === "found" && section.amountRupees === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountRupees"],
+        message: 'When status is "found", amountRupees must be a non-null decimal string.',
+      });
+    }
+    if (section.status === "missing" && section.amountRupees !== null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountRupees"],
+        message:
+          'When status is "missing", amountRupees must be null. A missing amount is unknown, not zero.',
+      });
+    }
+  });
+export type ExplanationSection = z.infer<typeof explanationSectionSchema>;
+
+export const explanationResponseSchema = z
+  .object({
+    validation: z.enum(["validated", "server_template"]),
+    explanation: explanationSchema,
+    sections: z.array(explanationSectionSchema).length(5),
+  })
+  .strict()
+  .superRefine((response, ctx) => {
+    const sectionKeys = response.sections.map((section) => section.fieldKey);
+    if (new Set(sectionKeys).size !== sectionKeys.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["sections"],
+        message: "Each financial field may appear only once.",
+      });
+    }
+
+    const factKeys = response.explanation.financialFactsUsed.map(
+      (fact) => fact.fieldKey,
+    );
+    if (new Set(factKeys).size !== factKeys.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["explanation", "financialFactsUsed"],
+        message: "Each financial fact may appear only once.",
+      });
+    }
+
+    for (const key of sectionKeys) {
+      if (!factKeys.includes(key)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["sections"],
+          message: `Section ${key} has no matching financial fact.`,
+        });
+      }
+    }
+    for (const key of factKeys) {
+      if (!sectionKeys.includes(key)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["explanation", "financialFactsUsed"],
+          message: `Fact ${key} has no matching section.`,
+        });
+      }
+    }
+  });
+export type ExplanationResponse = z.infer<typeof explanationResponseSchema>;
