@@ -268,6 +268,25 @@ describe("POST /api/bills/explain — validated public response", () => {
     expect(body.sections[0]?.amountRupees).toBe("15000");
   });
 
+  it("falls back when the live-style 'cover' wording trips unsupported_claim", async () => {
+    const { store, token } = await verified(VALID_BILL);
+    const provider = createFakeExplanationProvider(() =>
+      structuredDraftResponse(
+        "This is the amount your insurance company has approved to cover but has not yet paid.",
+      ),
+    );
+    const response = await handleExplanationRequest(
+      explainRequest(token),
+      dependencies(store, provider),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ExplanationResponse;
+    expect(body.validation).toBe("server_template");
+    expect(JSON.stringify(body)).not.toContain("approved to cover");
+    expect(body.sections[0]?.amountRupees).toBe("15000");
+  });
+
   it("falls back on provider timeout or malformed output", async () => {
     for (const provider of [
       createFakeExplanationProvider(() => {

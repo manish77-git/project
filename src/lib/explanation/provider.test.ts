@@ -19,6 +19,17 @@ const INPUT: ExplanationProviderInput = {
   ],
 };
 
+const FULL_INPUT: ExplanationProviderInput = {
+  language: "en",
+  fields: [
+    { fieldKey: "billTotalAfterDiscounts", status: "found" },
+    { fieldKey: "insuranceApprovedButNotPaid", status: "found" },
+    { fieldKey: "insurancePaidOrCredited", status: "found" },
+    { fieldKey: "patientPayments", status: "found" },
+    { fieldKey: "printedAmountDue", status: "missing" },
+  ],
+};
+
 function geminiResponse(text: string): Response {
   return new Response(
     JSON.stringify({
@@ -44,17 +55,45 @@ async function providerError(
 
 describe("buildExplanationPrompt", () => {
   it("describes fields and availability without sending any amount", () => {
-    const { system, user } = buildExplanationPrompt(INPUT);
+    const { system, user } = buildExplanationPrompt(FULL_INPUT);
 
-    expect(system).toContain("Hindi (hi)");
-    expect(system).toContain("Do NOT write any amount");
+    expect(system).toContain("English (en)");
+    expect(system).toContain("Latin script");
+    expect(system).toContain("Never write an amount");
     expect(system).toContain("missing is unknown");
+    expect(system).toContain("cover, covers, covered, coverage");
+    expect(system).toContain("confirmed");
+    expect(system).toContain("Never say that insurance covers");
     expect(user).toContain("billTotalAfterDiscounts");
     expect(user).toContain("printedAmountDue");
     expect(user).toContain("missing from the record");
     expect(user).toContain("available");
     expect(user).not.toContain("INR");
     expect(user).not.toContain("15000");
+  });
+
+  it("gives field-specific wording that avoids the validator's claim words", () => {
+    const { user } = buildExplanationPrompt(FULL_INPUT);
+
+    expect(user).toContain("awaiting settlement");
+    expect(user).toContain("already settled or credited");
+    expect(user).toContain("already paid");
+    expect(user).toContain("currently shows as outstanding");
+    expect(user).toContain("Never say the patient owes it or must pay it");
+  });
+
+  it("carries language-specific script and banned-vocabulary instructions", () => {
+    const hi = buildExplanationPrompt({ ...FULL_INPUT, language: "hi" }).system;
+    expect(hi).toContain("Hindi (hi)");
+    expect(hi).toContain("Devanagari");
+    expect(hi).toContain("कवर");
+    expect(hi).toContain("पात्र");
+
+    const kn = buildExplanationPrompt({ ...FULL_INPUT, language: "kn" }).system;
+    expect(kn).toContain("Kannada (kn)");
+    expect(kn).toContain("Kannada script");
+    expect(kn).toContain("ಕವರ್");
+    expect(kn).toContain("ಅರ್ಹ");
   });
 });
 
@@ -96,6 +135,9 @@ describe("Gemini provider adapter", () => {
           required: string[];
           properties: {
             sections: {
+              description: string;
+              minItems: number;
+              maxItems: number;
               items: {
                 properties: { fieldKey: { enum: string[] } };
                 required: string[];
@@ -110,6 +152,15 @@ describe("Gemini provider adapter", () => {
     expect(body.generationConfig.responseMimeType).toBe("application/json");
     expect(body.generationConfig.responseSchema.required).toEqual(["sections"]);
     expect(
+      body.generationConfig.responseSchema.properties.sections.minItems,
+    ).toBe(5);
+    expect(
+      body.generationConfig.responseSchema.properties.sections.maxItems,
+    ).toBe(5);
+    expect(
+      body.generationConfig.responseSchema.properties.sections.description,
+    ).toContain("Exactly five sections");
+    expect(
       body.generationConfig.responseSchema.properties.sections.items.required,
     ).toEqual(["fieldKey", "explanation"]);
     expect(
@@ -123,7 +174,7 @@ describe("Gemini provider adapter", () => {
       "printedAmountDue",
     ]);
 
-    expect(body.systemInstruction.parts[0]?.text).toContain("Do NOT write any amount");
+    expect(body.systemInstruction.parts[0]?.text).toContain("Never write an amount");
 
     const sent = JSON.stringify(body);
     expect(sent).not.toContain("INV-2026-0042");

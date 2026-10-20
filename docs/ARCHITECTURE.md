@@ -11,9 +11,11 @@ number), **access-code authentication**, **bill verification** against synthetic
 hospital records, **authorized financial detail**, and a **validated public
 explanation** (`POST /api/bills/explain`) are implemented. The explanation
 provider is a Gemini REST adapter behind a replaceable port; the automated
-suite makes no live call, but a one-off manual check on 2026-10-19 succeeded
-(2 of 3 drafts validated, 1 safely fell back to the server template). There is
-**no** real hospital integration,
+suite makes no live call. A 2026-10-19 prompt-compliance fix tuned the model's
+wording to the validator without changing the validator; after it, one live
+spot check per language returned a validated explanation in English, Hindi and
+Kannada — one synthetic bill each, so a spot check rather than a success rate.
+There is **no** real hospital integration,
 **no** patient accounts or staff auth, and **no UI** behind any endpoint — the
 user interface is still the Create Next App starter page. A PostgreSQL layer
 exists and is optional; the app runs without a database.
@@ -222,7 +224,7 @@ confirmed with the team; the other three match the member annotations already in
   `@/` alias, `src/**/*.test.ts`).
 - Run: `npm test` (`npm run test:watch` for watch mode).
 - All fixtures are **synthetic** — no credentials, no real hospital documents.
-- Current status: **378 tests across 30 files, all passing** (schemas, health
+- Current status: **385 tests across 30 files, all passing** (schemas, health
   route, identification, access codes, verification, financials, explanation
   validation and the synthetic records repository). Database access is tested
   with a fake `Queryable`; the Gemini adapter uses a fake HTTP transport. No
@@ -258,8 +260,8 @@ tested on their own.
 3. ~~Verification against hospital records~~ — **done for synthetic records**; a
    real hospital adapter is still needed.
 4. ~~Authorized financials~~ — **done**.
-5. ~~Validated public explanation~~ — **done**; a live provider call was
-   verified manually once on 2026-10-19.
+5. ~~Validated public explanation~~ — **done**; live spot checks on 2026-10-19
+   returned `validated` in English, Hindi and Kannada (one synthetic bill each).
 6. AI vision extraction (replacing or supplementing OCR) — **next**.
 7. Persistence beyond the optional access-code store (tickets, records) → 8.
    accounts, staff auth, same-origin and rate-limit hardening → 9. support

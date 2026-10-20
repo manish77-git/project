@@ -13,6 +13,7 @@ import {
   validProviderSections,
   type FakeExplanationProvider,
 } from "./__fixtures__/fake-explanation-provider";
+import { promptAlignedSections } from "./__fixtures__/prompt-aligned-drafts";
 import { ExplanationProviderError } from "./provider";
 import { EXPLANATION_MESSAGES, generateExplanation } from "./service";
 
@@ -222,6 +223,28 @@ describe("generateExplanation — validated response", () => {
     );
   });
 
+  it("keeps a prompt-aligned draft validated in English, Hindi and Kannada", async () => {
+    for (const language of ["en", "hi", "kn"] as const) {
+      const sections = promptAlignedSections(language);
+      const { result } = run({
+        language,
+        provider: createFakeExplanationProvider(() =>
+          JSON.stringify({ sections }),
+        ),
+      });
+      const resolved = await result;
+
+      expect(resolved.kind, language).toBe("explanation");
+      if (resolved.kind !== "explanation") continue;
+
+      expect(resolved.response.validation, language).toBe("validated");
+      expect(
+        resolved.response.sections.map((section) => section.explanation),
+        language,
+      ).toEqual(sections.map((section) => section.explanation));
+    }
+  });
+
   it("sends only keys and availability to the provider — no amounts or identifiers", async () => {
     const { provider, result } = run();
     await result;
@@ -312,6 +335,22 @@ describe("generateExplanation — draft safety", () => {
       // The template still carries the authoritative record value.
       expect(resolved.response.sections[0]?.amountRupees).toBe("15000");
     }
+  });
+
+  it("falls back for the live-style insurance 'cover' sentence without leaking it", async () => {
+    const raw =
+      "This is the amount your insurance company has approved to cover but has not yet paid.";
+    const { result } = run({
+      provider: createFakeExplanationProvider(() => structuredDraftResponse(raw)),
+    });
+    const resolved = await result;
+
+    expect(resolved.kind).toBe("explanation");
+    if (resolved.kind !== "explanation") return;
+
+    expect(resolved.response.validation).toBe("server_template");
+    expect(JSON.stringify(resolved.response)).not.toContain("approved to cover");
+    expect(resolved.response.sections[0]?.amountRupees).toBe("15000");
   });
 
   it("falls back for malformed or structurally invalid provider output", async () => {

@@ -3,7 +3,8 @@ import {
   MOCK_HOSPITAL_RECORDS,
   type HospitalRecord,
 } from "@/lib/records/mock-records";
-import { financialFieldKeySchema } from "@/lib/schemas";
+import { financialFieldKeySchema, type LanguageCode } from "@/lib/schemas";
+import { promptAlignedSections } from "./__fixtures__/prompt-aligned-drafts";
 import type { ProviderDraftSection } from "./validator";
 import {
   buildExplanationResponse,
@@ -125,6 +126,30 @@ describe("validateProviderDraft", () => {
     if (result.ok) expect(result.sections).toHaveLength(5);
   });
 
+  it("accepts prompt-aligned explanations in English, Hindi and Kannada", () => {
+    for (const language of ["en", "hi", "kn"] as const) {
+      const sections = promptAlignedSections(language);
+      expect(
+        validateProviderDraft(JSON.stringify({ sections })),
+        language,
+      ).toEqual({ ok: true, sections });
+    }
+  });
+
+  it("reproduces the live false positive in the insurance-approved section", () => {
+    // The original live draft was not persisted in the repository. This is the
+    // natural sentence for insuranceApprovedButNotPaid that the old prompt
+    // elicited; the validator rejects it because of "cover", before any
+    // amount is ever involved.
+    const explanation =
+      "This is the amount your insurance company has approved to cover but has not yet paid.";
+    expect(findTextSafetyFailure(explanation)).toBe("unsupported_claim");
+    expect(validateProviderDraft(draftFor(explanation))).toEqual({
+      ok: false,
+      reason: "unsupported_claim",
+    });
+  });
+
   it("rejects missing, duplicate, unknown or extra fields", () => {
     const four = sections().slice(0, 4);
     const duplicate = [...sections(), sections()[0] as ProviderDraftSection];
@@ -218,25 +243,46 @@ describe("validateProviderDraft", () => {
     }
   });
 
-  it("rejects coverage, eligibility, waiver and payment claims in all three languages", () => {
-    const cases = [
-      "You are eligible for a waiver.",
-      "Your insurance covers this.",
-      "The hospital guaranteed the amount.",
-      "You must pay now.",
-      "You have to pay now.",
-      "Your insurance will pay for this.",
-      "This is confirmed.",
-      "आप पात्र हैं।",
-      "बीमा भुगतान करेगा।",
-      "यह राशि माफ है।",
-      "ನೀವು ಅರ್ಹರಾಗಿದ್ದೀರಿ.",
-      "ಈ ಮೊತ್ತವನ್ನು ಮನ್ನಾ ಮಾಡಲಾಗಿದೆ.",
-      "ವಿಮೆ ಪಾವತಿಸುತ್ತದೆ.",
+  it("rejects each unsupported-claim pattern in all three languages", () => {
+    const cases: [LanguageCode, string][] = [
+      ["en", "This is covered by your insurer."],
+      ["en", "This is your coverage."],
+      ["en", "You are eligible for this."],
+      ["en", "The hospital guaranteed the amount."],
+      ["en", "This is a waiver."],
+      ["en", "This is a write-off."],
+      ["en", "This is a write off."],
+      ["en", "This is an additional discount."],
+      ["en", "This is confirmed."],
+      ["en", "You owe this amount."],
+      ["en", "You must pay now."],
+      ["en", "You have to pay now."],
+      ["en", "Payment is required."],
+      ["en", "Your insurance will pay for this."],
+      ["hi", "यह कवर है।"],
+      ["hi", "यह कवरेज है।"],
+      ["hi", "आप पात्र हैं।"],
+      ["hi", "यह गारंटी है।"],
+      ["hi", "यह माफ है।"],
+      ["hi", "आपको भुगतान करना है।"],
+      ["hi", "आपको चुकाना है।"],
+      ["hi", "यह अतिरिक्त छूट है।"],
+      ["hi", "यह विशेष छूट है।"],
+      ["hi", "बीमा भुगतान करेगा।"],
+      ["kn", "ಇದು ಕವರ್ ಆಗಿದೆ."],
+      ["kn", "ಇದು ಕವರೇಜ್ ಆಗಿದೆ."],
+      ["kn", "ನೀವು ಅರ್ಹರಾಗಿದ್ದೀರಿ."],
+      ["kn", "ಇದು ಖಾತರಿ."],
+      ["kn", "ಇದು ಮನ್ನಾ."],
+      ["kn", "ನೀವು ಪಾವತಿಸಬೇಕು."],
+      ["kn", "ನೀವು ತೆರಬೇಕು."],
+      ["kn", "ಇದು ಹೆಚ್ಚುವರಿ ರಿಯಾಯಿತಿ."],
+      ["kn", "ಇದು ವಿಶೇಷ ರಿಯಾಯಿತಿ."],
+      ["kn", "ವಿಮೆ ಪಾವತಿಸುತ್ತದೆ."],
     ];
 
-    for (const text of cases) {
-      expect(validateProviderDraft(draftFor(text)), text).toEqual({
+    for (const [language, text] of cases) {
+      expect(validateProviderDraft(draftFor(text)), `${language}: ${text}`).toEqual({
         ok: false,
         reason: "unsupported_claim",
       });
