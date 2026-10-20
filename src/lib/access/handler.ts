@@ -17,6 +17,7 @@
  * an `isVerified: true` or an `outcome` in the body is a 400, not a bypass.
  */
 import { NextResponse } from "next/server";
+import { BODY_TOO_LARGE_MESSAGE, readJsonBody } from "@/lib/http/request-body";
 import {
   accessChallengeRequestSchema,
   accessChallengeVerificationRequestSchema,
@@ -97,12 +98,20 @@ const STATUS_BY_REJECTION: Record<ChallengeRejectionReason, number> = {
   throttled: 429,
 };
 
-async function readJsonBody(request: Request): Promise<{ ok: true; body: unknown } | { ok: false }> {
-  try {
-    return { ok: true, body: await request.json() };
-  } catch {
-    return { ok: false };
-  }
+/**
+ * Reads the JSON body under a size limit. A body that cannot be read is
+ * reported as malformed, exactly as an unparseable one always was; the only
+ * new outcome is an oversized body, which is refused before it is buffered.
+ */
+async function readChallengeBody(
+  request: Request,
+): Promise<
+  | { ok: true; body: unknown }
+  | { ok: false; reason: "invalid_json" | "unreadable" | "too_large" }
+> {
+  const parsed = await readJsonBody(request);
+  if (!parsed.ok) return { ok: false, reason: parsed.reason };
+  return { ok: true, body: parsed.value };
 }
 
 function requireJson(request: Request): string | null {
@@ -130,8 +139,11 @@ export async function handleChallengeRequest(
     return errorResponse(503, "access_unavailable", ACCESS_UNAVAILABLE_MESSAGE);
   }
 
-  const parsedBody = await readJsonBody(request);
+  const parsedBody = await readChallengeBody(request);
   if (!parsedBody.ok) {
+    if (parsedBody.reason === "too_large") {
+      return errorResponse(413, "payload_too_large", BODY_TOO_LARGE_MESSAGE);
+    }
     return errorResponse(400, "invalid_request", "The request body must be valid JSON.");
   }
 
@@ -186,8 +198,11 @@ export async function handleChallengeVerificationRequest(
     return errorResponse(503, "access_unavailable", ACCESS_UNAVAILABLE_MESSAGE);
   }
 
-  const parsedBody = await readJsonBody(request);
+  const parsedBody = await readChallengeBody(request);
   if (!parsedBody.ok) {
+    if (parsedBody.reason === "too_large") {
+      return errorResponse(413, "payload_too_large", BODY_TOO_LARGE_MESSAGE);
+    }
     return errorResponse(400, "invalid_request", "The request body must be valid JSON.");
   }
 

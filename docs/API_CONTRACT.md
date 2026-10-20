@@ -102,7 +102,7 @@ show a patient (no paths, stack traces, engine messages or config):
 | `invalid_request` | 400 | Malformed JSON, missing/empty/invalid bill number, no image, bad field type |
 | `empty_image` | 400 | Zero-byte upload |
 | `unsupported_media_type` | 415 | Content is not a PNG/JPEG/BMP (magic bytes), or the request is neither multipart nor JSON |
-| `payload_too_large` | 413 | > 8 MB, refused from `content-length` before the body is buffered |
+| `payload_too_large` | 413 | Image over 8 MB, or a multipart body over 8 MB + 64 KB. Enforced **while the body is read**, so a chunked upload with no `content-length` is refused at the limit instead of after it has been buffered |
 | `ocr_unavailable` | 503 | The OCR engine could not start or run |
 | `extraction_failed` | 500 | Unexpected failure, or a result that failed schema validation |
 
@@ -174,6 +174,7 @@ bound server-side to the bill number it was created for.
 | Code | HTTP | Cause |
 | --- | --- | --- |
 | `invalid_request` | 400 | Malformed JSON, missing/invalid bill number, or any extra property |
+| `payload_too_large` | 413 | Body over 64 KB, refused while reading |
 | `unsupported_media_type` | 415 | Not `application/json` |
 | `too_many_attempts` | 429 | The bill/client throttle is active; response carries `Retry-After` |
 | `access_unavailable` | 503 | No usable `ACCESS_SECRET` |
@@ -215,6 +216,7 @@ not expired. The response never contains the code or any bill contents.
 | Code | HTTP | Cause |
 | --- | --- | --- |
 | `invalid_request` | 400 | Malformed JSON or a body that fails the schema |
+| `payload_too_large` | 413 | Body over 64 KB, refused while reading |
 | `access_denied` | 401 | Wrong code, expired challenge, already-answered challenge, unknown challenge — one message for all four, so the endpoint cannot be used to discover bills or codes |
 | `too_many_attempts` | 429 | Challenge locked after 3 wrong answers, or the throttle is active. `Retry-After` is included when a remaining wait is known |
 | `access_unavailable` | 503 | No usable `ACCESS_SECRET` |
@@ -263,6 +265,7 @@ appear, and only for `amounts_differ`.
 | --- | --- | --- |
 | `invalid_request` | 400 | Malformed JSON, unexpected property, invalid candidate, or two candidates for one field |
 | `access_denied` | 401 | No valid bearer session |
+| `payload_too_large` | 413 | Body over 64 KB, refused while reading |
 | `unsupported_media_type` | 415 | Not `application/json` |
 | `access_unavailable` | 503 | No usable `ACCESS_SECRET` |
 | `verification_failed` | 500 | Unexpected failure, or an invalid result |
@@ -388,6 +391,7 @@ rather than trusted.
 | --- | --- | --- |
 | `invalid_request` | 400 | Malformed JSON, missing/invalid language, or any extra property |
 | `access_denied` | 401 | Missing, invalid or expired bearer session |
+| `payload_too_large` | 413 | Body over 64 KB, refused while reading |
 | `unsupported_media_type` | 415 | Not `application/json` |
 | `verification_required` | 409 | The session has not called verify |
 | `amounts_differ` | 409 | Discrepancy still unresolved; body adds `discrepancyKeys` (keys only) |

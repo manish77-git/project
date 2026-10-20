@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALLOWED_IMAGE_MIME_TYPES,
   MAX_IMAGE_BYTES,
-  exceedsUploadContentLength,
+  MAX_UPLOAD_BODY_BYTES,
   sniffImageMimeType,
   validateBillImage,
 } from "./image-input";
@@ -88,17 +88,9 @@ describe("validateBillImage", () => {
   });
 });
 
-describe("exceedsUploadContentLength", () => {
-  it("ignores a missing or unusable header", () => {
-    expect(exceedsUploadContentLength(null)).toBe(false);
-    expect(exceedsUploadContentLength("not-a-number")).toBe(false);
-  });
-
-  it("allows an image plus form overhead", () => {
-    expect(exceedsUploadContentLength(String(MAX_IMAGE_BYTES))).toBe(false);
-  });
-
-  it("rejects a body far beyond the limit before it is buffered", () => {
-    expect(exceedsUploadContentLength(String(MAX_IMAGE_BYTES + 64 * 1024 + 1))).toBe(true);
+describe("MAX_UPLOAD_BODY_BYTES", () => {
+  it("leaves room for multipart framing on top of a maximum-size image", () => {
+    expect(MAX_UPLOAD_BODY_BYTES).toBeGreaterThan(MAX_IMAGE_BYTES);
+    expect(MAX_UPLOAD_BODY_BYTES - MAX_IMAGE_BYTES).toBe(64 * 1024);
   });
 });
