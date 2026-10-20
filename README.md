@@ -109,11 +109,19 @@ Do not treat any of these as working. Each is documented as a target only:
   the synthetic in-code repository. Swapping in a real system means writing one
   `HospitalRecordRepository` adapter.
 - A **live** Gemini call in the automated suite — not implemented: `npm test`
-  uses an injected fake provider and a fake HTTP transport. A one-off manual
-  check on 2026-10-19 did succeed against `gemini-3.5-flash-lite` (three
-  provider calls; two drafts validated and one safely fell back to the server
-  template). Without `GEMINI_API_KEY` the endpoint returns
-  `503 explanation_unavailable`.
+  uses an injected fake provider and a fake HTTP transport. Live calls are
+  manual spot checks instead: an earlier one-off check on 2026-10-19 against
+  `gemini-3.5-flash-lite` returned two validated drafts and one that correctly
+  fell back to the server template. Without `GEMINI_API_KEY` the endpoint
+  returns `503 explanation_unavailable`.
+  A later prompt-compliance fix on the same day gave the model per-field wording
+  that avoids the validator's rejected claim words (notably "cover" for the
+  insurance fields), added the forbidden terms explicitly to the prompt, and
+  pinned the response schema to five sections. The fix is covered hermetically
+  (prompt-aligned drafts validate in all three languages) and was afterwards
+  confirmed by live spot checks: one request each in English, Hindi and
+  Kannada all returned `validation: "validated"` (see
+  [Explanations (Stage 4)](#explanations-stage-4)).
 - A real hospital record source with dates — the explanation response therefore
   reports `datesUsed: []` and warns that the supplied record has no dates; any
   date-like model prose is rejected rather than trusted.
@@ -130,9 +138,9 @@ Do not treat any of these as working. Each is documented as a target only:
 - Any test against a **live** database or a **live** AI provider — **not
   implemented**. Database logic and the Gemini adapter are tested with fakes and
   a fake transport; real-image OCR is covered by `npm run test:ocr` (see
-  [bill identification limitations](#bill-identification-limitations)). A
-  one-off manual live Gemini check on 2026-10-19 succeeded; the automated suite
-  still makes no live model call.
+  [bill identification limitations](#bill-identification-limitations)). Manual
+  live Gemini spot checks on 2026-10-19 succeeded in all three languages; the
+  automated suite still makes no live model call.
 - Any frontend work: none of the endpoints has a UI behind it yet. See
   [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 
@@ -273,14 +281,29 @@ The public endpoint is `POST /api/bills/explain`; the workflow lives in
   coverage/eligibility/waiver/payment claim is discarded; malformed, missing,
   duplicate or unknown fields are discarded too. The fallback is a
   deterministic server template built from the record, never the raw draft.
+  The claim filter is **lexical, not semantic**: it can reject legitimate
+  wording — a denial such as "not covered" is refused by design — and exotic
+  phrasing could still slip through.
 - **What is public.** Only the parsed `explanationResponseSchema`: language,
   five safe sections, server-derived facts, `datesUsed`, warnings and the
   required notice. Raw drafts and provider error bodies never leave the server.
-- **Live inference is verified manually, not by the suite.** The suite uses a
+- **Live inference is spot-checked manually, not by the suite.** The suite uses a
   fake provider and a fake HTTP transport; nothing contacts Google in `npm test`.
-  A one-off manual check on 2026-10-19 used the real `gemini-3.5-flash-lite`
-  provider: all three calls succeeded, two drafts passed validation, and one
-  unsafe draft correctly fell back to the server template.
+  Manual live checks on synthetic bill `INV-2026-0042`, one explanation request
+  per language:
+
+  | Language | `validation` | Conforms to `explanationResponseSchema` | Facts match record |
+  | --- | --- | --- | --- |
+  | English (`en`) | `validated` | yes | 5/5 |
+  | Hindi (`hi`) | `validated` | yes | 5/5 |
+  | Kannada (`kn`) | `validated` | yes | 5/5 |
+
+  `validated` means a real Gemini draft passed the safety validator; all five
+  sentences in each language differed from the deterministic fallback template.
+  Earlier the same day, before the prompt fix, one unsafe draft correctly fell
+  back to that template instead. These are spot checks, not a success rate or a
+  production-readiness claim, and they do not make `npm test` any less offline.
+  The full record is in [docs/STAGE4_REPORT.md](docs/STAGE4_REPORT.md).
 
 ## Quality checks
 
@@ -290,7 +313,7 @@ you can tell a regression from a pre-existing failure:
 
 | Command | What it does | Last verified |
 | --- | --- | --- |
-| `npm test` | Vitest, single run (hermetic — no network, no database, no real OCR, no live LLM) | ✅ 378 tests / 30 files passed, exit 0 |
+| `npm test` | Vitest, single run (hermetic — no network, no database, no real OCR, no live LLM) | ✅ 385 tests / 30 files passed, exit 0 |
 | `npm run test:ocr` | Vitest against the **real** OCR engine and real image files | ✅ 8 tests / 1 file passed, exit 0 |
 | `npm run test:watch` | Vitest in watch mode | — (interactive) |
 | `npm run lint` | ESLint over the repo | ✅ 0 errors, 0 warnings, exit 0 |

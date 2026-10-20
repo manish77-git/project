@@ -403,12 +403,21 @@ is sent in `x-goog-api-key`, never in the URL or a prompt, and provider error
 bodies are discarded. The provider port is replaceable, so the tests inject a
 fake without a live key.
 
-**Tested by:** `src/lib/explanation/provider.test.ts` (10),
-`validator.test.ts` (16), `service.test.ts` (13) and `handler.test.ts` (16),
+**Tested by:** `src/lib/explanation/provider.test.ts` (12),
+`validator.test.ts` (18), `service.test.ts` (15) and `handler.test.ts` (17),
 plus `src/lib/schemas/explanation-response.test.ts` (8). All use a fake provider
-or a fake HTTP transport; the automated suite makes no live call. A one-off
-manual live check on 2026-10-19 succeeded (2 of 3 drafts validated; 1 safely
-fell back to the server template).
+or a fake HTTP transport; the automated suite makes no live call. Live spot
+checks by hand on 2026-10-19, after the prompt fix, returned `validated` in
+English, Hindi and Kannada (one synthetic bill per language).
+
+**Prompt shape:** the system instruction names the target language and script,
+forbids digits, number words, dates, percentages and currency in any spelling,
+lists the exact claim words the validator rejects (in all three languages), and
+gives per-field wording that avoids them — the insurance fields are described as
+*approved awaiting settlement*, *settled* or *credited*, never *covered*. The
+response schema fixes the section count at five. The validator itself is
+unchanged: a draft that still uses a forbidden word falls back to the server
+template.
 
 ## Ground rules
 
