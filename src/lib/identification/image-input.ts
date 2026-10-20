@@ -22,6 +22,14 @@ export type AllowedImageMimeType = (typeof ALLOWED_IMAGE_MIME_TYPES)[number];
 /** Maximum accepted upload size in bytes (8 MiB). */
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Ceiling for the whole multipart body: the image plus form overhead.
+ *
+ * Enforced while the body is read (see `src/lib/http/request-body.ts`), so a
+ * chunked upload cannot slip past an absent `content-length`.
+ */
+export const MAX_UPLOAD_BODY_BYTES = MAX_IMAGE_BYTES + 64 * 1024;
+
 export type ImageRejectionCode =
   | "empty_image"
   | "payload_too_large"
@@ -88,14 +96,4 @@ export function validateBillImage(input: {
   }
 
   return { ok: true, mimeType: sniffed, byteLength: bytes.byteLength };
-}
-
-/** True when the request body is too large to be a bill image plus form overhead. */
-export function exceedsUploadContentLength(contentLengthHeader: string | null): boolean {
-  if (contentLengthHeader === null) return false;
-  const contentLength = Number.parseInt(contentLengthHeader, 10);
-  if (!Number.isFinite(contentLength) || contentLength <= 0) return false;
-  // Allow room for multipart boundaries, field names and the optional
-  // manually-typed bill number on top of the image itself.
-  return contentLength > MAX_IMAGE_BYTES + 64 * 1024;
 }

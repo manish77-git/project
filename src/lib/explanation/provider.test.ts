@@ -127,6 +127,9 @@ describe("Gemini provider adapter", () => {
 
     const headers = capturedInit?.headers as Record<string, string>;
     expect(headers["x-goog-api-key"]).toBe("test-key");
+    // A redirect must not be followed: the key is a request header, and a
+    // redirect would re-send it to whatever host the response names.
+    expect(capturedInit?.redirect).toBe("error");
 
     const body = JSON.parse(String(capturedInit?.body)) as {
       generationConfig: {
