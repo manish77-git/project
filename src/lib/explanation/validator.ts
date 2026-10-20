@@ -265,7 +265,14 @@ export function formatInrAmount(amount: string): string {
   return fraction === undefined ? grouped : `${grouped}.${fraction}`;
 }
 
-const HEADINGS: Record<LanguageCode, Record<FinancialFieldKey, string>> = {
+/**
+ * Localized names of the five tracked fields.
+ *
+ * Exported because the question-answering path renders the same fields and must
+ * use the same words: a patient who reads one heading here must not meet a
+ * different one for the same field there.
+ */
+export const HEADINGS: Record<LanguageCode, Record<FinancialFieldKey, string>> = {
   en: {
     billTotalAfterDiscounts: "Bill total after discounts",
     insuranceApprovedButNotPaid: "Insurance approved but not paid",
@@ -343,7 +350,14 @@ const MISSING_VALUE: Record<LanguageCode, string> = {
   kn: "ಈ ಮೊತ್ತವು ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯಲ್ಲಿ ಲಭ್ಯವಿಲ್ಲ.",
 };
 
-const MISSING_WARNING: Record<LanguageCode, (heading: string) => string> = {
+/**
+ * The "unknown, not zero" warning for a field with no recorded value.
+ *
+ * Exported for the question-answering path, which renders the same field and
+ * must describe a missing value the same way — "not available" and "zero" are
+ * different answers to a patient.
+ */
+export const MISSING_WARNING: Record<LanguageCode, (heading: string) => string> = {
   en: (heading) =>
     `No amount is on file for "${heading}". It is shown as unknown, not as zero.`,
   hi: (heading) =>
@@ -364,7 +378,13 @@ const FALLBACK_WARNING: Record<LanguageCode, string> = {
   kn: "ವೈಯಕ್ತಿಕ ವಿವರಣೆ ಲಭ್ಯವಿರಲಿಲ್ಲ, ಆದ್ದರಿಂದ ಇದು ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯಿಂದ ನೇರವಾಗಿ ಸಿದ್ಧಪಡಿಸಿದ ಸಾಮಾನ್ಯ ಸಾರಾಂಶ.",
 };
 
-function renderValue(language: LanguageCode, amount: string | null): string {
+/**
+ * Renders one recorded amount, or says it is unknown.
+ *
+ * Exported for the same reason as `HEADINGS`: one renderer, so a figure can
+ * never be formatted two different ways on the same bill.
+ */
+export function renderValue(language: LanguageCode, amount: string | null): string {
   if (amount === null) return MISSING_VALUE[language];
   return `${RECORD_PREFIX[language]} ${formatInrAmount(amount)}${SENTENCE_END[language]}`;
 }

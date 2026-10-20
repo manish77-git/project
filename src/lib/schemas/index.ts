@@ -19,4 +19,5 @@ export * from "./identification";
 export * from "./verification";
 export * from "./financial";
 export * from "./explanation";
+export * from "./questions";
 export * from "./callback";
