@@ -16,7 +16,12 @@
  * message safe to show a patient.
  */
 import { NextResponse } from "next/server";
-import { exceedsUploadContentLength, MAX_IMAGE_BYTES } from "./image-input";
+import {
+  BODY_TOO_LARGE_MESSAGE,
+  readJsonBody,
+  readMultipartFormData,
+} from "@/lib/http/request-body";
+import { MAX_IMAGE_BYTES, MAX_UPLOAD_BODY_BYTES } from "./image-input";
 import type { OcrEngine } from "./ocr";
 import {
   BILL_NUMBER_REJECTION_MESSAGE,
@@ -85,19 +90,20 @@ async function handleMultipart(
   request: Request,
   dependencies: IdentifyHandlerDependencies,
 ): Promise<NextResponse> {
-  if (exceedsUploadContentLength(request.headers.get("content-length"))) {
-    return errorResponse(
-      "payload_too_large",
-      `The upload is larger than the ${Math.floor(MAX_IMAGE_BYTES / (1024 * 1024))} MB limit.`,
-    );
-  }
-
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
+  // The size limit is enforced while the body is read, not afterwards: a
+  // declared `content-length` is refused outright, and a chunked upload with no
+  // such header stops being read the moment it crosses the limit.
+  const parsedForm = await readMultipartFormData(request, MAX_UPLOAD_BODY_BYTES);
+  if (!parsedForm.ok) {
+    if (parsedForm.reason === "too_large") {
+      return errorResponse(
+        "payload_too_large",
+        `The upload is larger than the ${Math.floor(MAX_IMAGE_BYTES / (1024 * 1024))} MB limit.`,
+      );
+    }
     return errorResponse("invalid_request", "The form data could not be read.");
   }
+  const form = parsedForm.form;
 
   const numberField = form.get(BILL_NUMBER_FIELD_NAME);
   if (numberField !== null && typeof numberField !== "string") {
@@ -152,13 +158,14 @@ async function handleMultipart(
 }
 
 async function handleJson(request: Request): Promise<NextResponse> {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const body = await readJsonBody(request);
+  if (!body.ok) {
+    if (body.reason === "too_large") {
+      return errorResponse("payload_too_large", BODY_TOO_LARGE_MESSAGE);
+    }
     return errorResponse("invalid_request", "The request body must be valid JSON.");
   }
-  return respond(identifyBillFromManualEntry(body));
+  return respond(identifyBillFromManualEntry(body.value));
 }
 
 /** Entry point used by `POST /api/bills/identify`. */

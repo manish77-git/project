@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authorizeSession } from "@/lib/access/authorization";
+import { BODY_TOO_LARGE_MESSAGE, readJsonBody } from "@/lib/http/request-body";
 import type { AccessStore } from "@/lib/access/store";
 import type { ExplanationProvider } from "@/lib/explanation/provider";
 import {
@@ -134,10 +135,11 @@ export async function handleExplanationRequest(
     );
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const body = await readJsonBody(request);
+  if (!body.ok) {
+    if (body.reason === "too_large") {
+      return errorResponse(413, "payload_too_large", BODY_TOO_LARGE_MESSAGE);
+    }
     return errorResponse(
       400,
       "invalid_request",
@@ -145,7 +147,7 @@ export async function handleExplanationRequest(
     );
   }
 
-  const parsed = explanationRequestSchema.safeParse(body);
+  const parsed = explanationRequestSchema.safeParse(body.value);
   if (!parsed.success) {
     return errorResponse(
       400,

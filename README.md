@@ -134,6 +134,16 @@ Do not treat any of these as working. Each is documented as a target only:
 - Same-origin enforcement, CSRF protection and rate limiting — **not
   implemented** on any endpoint. Tokens are held in the `Authorization` header
   and are not cookies, which limits (but does not remove) cross-site risk.
+  Every endpoint does bound its request body while reading it (JSON 64 KB,
+  uploads 8 MB + 64 KB of framing), so an oversized chunked request is refused
+  at the limit rather than after it has been buffered — but that is input
+  sizing, not a request-rate limit.
+- Shared server-side state — **not implemented**. Challenges, attempt counters
+  and sessions live in one process's memory. Dead entries are swept when they
+  expire, so memory is bounded by policy TTLs rather than by uptime, but on a
+  multi-instance deployment a patient can be routed to a process that has never
+  seen their challenge, and an attempt limit is counted once per instance. This
+  is the main blocker for running more than one instance.
 - Hospital support dashboard — **not implemented**.
 - Any test against a **live** database or a **live** AI provider — **not
   implemented**. Database logic and the Gemini adapter are tested with fakes and

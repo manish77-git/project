@@ -24,6 +24,16 @@
  */
 import type { VerificationOutcome } from "@/lib/schemas";
 import { createCodeSeedSource, DEFAULT_ACCESS_CODES_FILE } from "./code-seed";
+import { MINUTE_MS, THROTTLE_WINDOW_MINUTES } from "./policy";
+
+/**
+ * How often a write may spend time dropping dead entries.
+ *
+ * Sweeping on every write would make each request O(entries). Sweeping at most
+ * once a minute keeps the cost amortised while still bounding how long dead
+ * state can survive.
+ */
+const SWEEP_INTERVAL_MS = MINUTE_MS;
 
 /** A code as stored: a digest, never the code itself. */
 export interface AccessCodeRecord {
@@ -104,6 +114,42 @@ export function createInMemoryAccessStore(
   const attempts = new Map<string, AttemptRecord>();
   const sessions = new Map<string, AccessSession>();
 
+  let lastSweepAt: number | null = null;
+
+  /**
+   * Drops state that can no longer influence any decision.
+   *
+   * Without this the maps only ever grow: a challenge is created by anyone who
+   * can reach the endpoint, and nothing removed an expired one. A request flood
+   * with random bill numbers would then grow memory for as long as the process
+   * lives. Entries are removed only once they are dead — an expired challenge,
+   * an expired session, a failure counter older than the throttle window — so a
+   * live flow is never disturbed.
+   *
+   * Both the challenge and session expiry are re-checked on read, so removing a
+   * dead row here cannot make a stale credential valid; at worst an expired
+   * challenge is reported as unknown rather than expired, and both refusals are
+   * the same 401 to the caller.
+   */
+  function sweep(now: Date): void {
+    const nowMs = now.getTime();
+    if (lastSweepAt !== null && nowMs - lastSweepAt < SWEEP_INTERVAL_MS) return;
+    lastSweepAt = nowMs;
+
+    for (const [challengeId, challenge] of challenges) {
+      if (challenge.expiresAt.getTime() <= nowMs) challenges.delete(challengeId);
+    }
+
+    for (const [sessionId, session] of sessions) {
+      if (session.expiresAt.getTime() <= nowMs) sessions.delete(sessionId);
+    }
+
+    const attemptCutoff = nowMs - THROTTLE_WINDOW_MINUTES * MINUTE_MS;
+    for (const [key, attempt] of attempts) {
+      if (attempt.lastFailedAt.getTime() <= attemptCutoff) attempts.delete(key);
+    }
+  }
+
   /**
    * Merges seeded digests in, never overwriting live state.
    *
@@ -142,6 +188,7 @@ export function createInMemoryAccessStore(
     },
 
     async addChallenge(record: ChallengeRecord): Promise<void> {
+      sweep(record.createdAt);
       challenges.set(record.challengeId, { ...record });
     },
 
@@ -192,6 +239,7 @@ export function createInMemoryAccessStore(
     },
 
     async addSession(session: AccessSession): Promise<void> {
+      sweep(session.createdAt);
       sessions.set(session.sessionId, { ...session });
     },
 

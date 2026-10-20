@@ -18,6 +18,11 @@
  */
 import { NextResponse } from "next/server";
 import { authorizeSession } from "@/lib/access/authorization";
+import {
+  BODY_TOO_LARGE_MESSAGE,
+  MAX_JSON_BODY_BYTES,
+  readBodyWithLimit,
+} from "@/lib/http/request-body";
 import type { AccessStore } from "@/lib/access/store";
 import type { HospitalRecord, HospitalRecordRepository } from "@/lib/records/mock-records";
 import {
@@ -67,13 +72,17 @@ const STATUS_BY_OUTCOME: Record<VerificationOutcome, number> = {
   hospital_not_registered: 409,
 };
 
-async function readJsonBody(request: Request): Promise<{ ok: true; body: unknown } | { ok: false }> {
-  let text: string;
-  try {
-    text = await request.text();
-  } catch {
-    return { ok: false };
-  }
+/** Reads the body under a size limit; an empty body still means `{}`. */
+async function readVerificationBody(
+  request: Request,
+): Promise<
+  | { ok: true; body: unknown }
+  | { ok: false; reason: "invalid_json" | "unreadable" | "too_large" }
+> {
+  const read = await readBodyWithLimit(request, MAX_JSON_BODY_BYTES);
+  if (!read.ok) return { ok: false, reason: read.reason };
+
+  const text = new TextDecoder().decode(read.bytes);
   // An empty body is treated as "nothing to add", not as malformed JSON: a
   // caller that only wants the server's own record should not have to spell out
   // an empty object.
@@ -81,7 +90,7 @@ async function readJsonBody(request: Request): Promise<{ ok: true; body: unknown
   try {
     return { ok: true, body: JSON.parse(text) };
   } catch {
-    return { ok: false };
+    return { ok: false, reason: "invalid_json" };
   }
 }
 
@@ -109,8 +118,11 @@ export async function handleVerifyRequest(
     return errorResponse(authorization.status, authorization.code, authorization.message);
   }
 
-  const body = await readJsonBody(request);
+  const body = await readVerificationBody(request);
   if (!body.ok) {
+    if (body.reason === "too_large") {
+      return errorResponse(413, "payload_too_large", BODY_TOO_LARGE_MESSAGE);
+    }
     return errorResponse(400, "invalid_request", "The request body must be valid JSON.");
   }
 
