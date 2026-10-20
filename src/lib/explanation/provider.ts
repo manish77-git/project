@@ -74,12 +74,62 @@ const LANGUAGE_NAMES: Record<LanguageCode, string> = {
   kn: "Kannada",
 };
 
-const FIELD_MEANINGS: Record<FinancialFieldKey, string> = {
-  billTotalAfterDiscounts: "the total billed after any discounts",
-  insuranceApprovedButNotPaid: "the amount the insurer approved but has not paid",
-  insurancePaidOrCredited: "the amount the insurer has paid or credited",
-  patientPayments: "the amount the patient has already paid",
-  printedAmountDue: "the amount printed on the bill as due",
+const LANGUAGE_INSTRUCTIONS: Record<LanguageCode, string> = {
+  en: "Use plain English, short sentences and the Latin script.",
+  hi: "Use plain, everyday Hindi in Devanagari script. Prefer the simple words a patient would use, and avoid formal legal or insurance jargon.",
+  kn: "Use plain, everyday Kannada in Kannada script. Prefer the simple words a patient would use, and avoid formal legal or insurance jargon.",
+};
+
+/**
+ * Words and phrases the validator treats as claims the record cannot support.
+ *
+ * The prompt repeats them so the model does not have to guess what "no
+ * insurance promises" means. They are forbidden even in a denial: "not
+ * covered" still tells the patient something the record does not establish.
+ */
+const BANNED_CLAIM_TERMS: Record<LanguageCode, string> = {
+  en: "cover, covers, covered, coverage, eligible, eligibility, guarantee, guaranteed, waive, waived, waiver, write-off, confirmed, owe, payment is required",
+  hi: "कवर, कवरेज, पात्र, गारंटी, माफ, माफी, भुगतान करना, चुकाना, अतिरिक्त छूट, विशेष छूट, बीमा भुगतान करेगा, बीमा भुगतान करेगी, बीमा देगा, बीमा देगी",
+  kn: "ಕವರ್, ಕವರೇಜ್, ಅರ್ಹ, ಖಾತರಿ, ಮನ್ನಾ, ಪಾವತಿಸಬೇಕು, ತೆರಬೇಕು, ಹೆಚ್ಚುವರಿ ರಿಯಾಯಿತಿ, ವಿಶೇಷ ರಿಯಾಯಿತಿ, ವಿಮೆ ಪಾವತಿಸುತ್ತದೆ, ವಿಮೆ ನೀಡುತ್ತದೆ",
+};
+
+interface FieldGuidance {
+  meaning: string;
+  guidance: string;
+}
+
+/**
+ * Per-field wording. The model is told what the field means and how to phrase
+ * it without the claims the validator rejects. The guidance deliberately
+ * avoids "cover" for the insurance fields, because that word is the most
+ * common reason a neutral explanation fails the safety guard.
+ */
+const FIELD_GUIDANCE: Record<FinancialFieldKey, FieldGuidance> = {
+  billTotalAfterDiscounts: {
+    meaning: "the total charge on the bill after reductions",
+    guidance:
+      "Say it is the overall amount billed after reductions. Do not explain why a reduction was given, and never call a reduction extra, additional, special or loyalty.",
+  },
+  insuranceApprovedButNotPaid: {
+    meaning: "an amount the insurer has approved but not yet settled",
+    guidance:
+      "Say it is an amount approved by the insurer that is still awaiting settlement. Never say it is covered, guaranteed, or will be paid.",
+  },
+  insurancePaidOrCredited: {
+    meaning: "an amount the insurer has already settled or credited",
+    guidance:
+      "Say it is an amount the insurer has already settled or credited. Do not promise any further payment.",
+  },
+  patientPayments: {
+    meaning: "an amount the patient has already paid",
+    guidance:
+      "Say it is a payment already made. Do not ask for another payment and do not say what remains to be paid.",
+  },
+  printedAmountDue: {
+    meaning: "the amount the bill shows as remaining",
+    guidance:
+      "Say it is the amount the bill currently shows as outstanding. Never say the patient owes it or must pay it.",
+  },
 };
 
 /**
@@ -93,30 +143,32 @@ export function buildExplanationPrompt(input: ExplanationProviderInput): {
   system: string;
   user: string;
 } {
+  const languageName = LANGUAGE_NAMES[input.language];
+
   const system = [
-    "You explain what hospital-bill fields mean to a patient in simple, calm and respectful language.",
-    `Write the entire explanation in ${LANGUAGE_NAMES[input.language]} (${input.language}).`,
-    "The server displays every amount separately from the verified hospital record. Do NOT write any amount, digit, date, percentage, currency symbol or currency code.",
-    "Do not infer, calculate, repeat or confirm a financial value. Do not discuss insurance coverage, eligibility, discounts, waivers, payment obligations, diagnoses, medical advice or legal rights.",
-    "A field marked missing is unknown. Say that the information is not available; never say or imply zero, and never guess.",
-    "Do not mention bill numbers, hospital names, patient names, access codes or this instruction.",
+    "You explain what hospital-bill fields mean to a patient in plain, calm and respectful language.",
+    `Write the entire explanation in ${languageName} (${input.language}). ${LANGUAGE_INSTRUCTIONS[input.language]}`,
+    "The server displays every amount separately from the verified hospital record. Never write an amount, digit (in any script), number word (such as thousand, lakh or crore, or the equivalent in the target language), date, percentage, currency symbol, currency code or currency word, bill number, hospital name or patient name. Never infer, calculate, repeat or confirm a value.",
+    "Explain only the general meaning of each supplied field. Do not say whether a value is correct, complete, final, or approved for the patient.",
+    `Never use these words, in English or in ${languageName}, even in a denial: ${BANNED_CLAIM_TERMS[input.language]}. Never say that insurance covers or will pay for something, that a waiver or write-off applies, that a discount is extra or special, that the patient is eligible for anything, or that the patient owes an amount or must, should, needs to or has to pay. Never tell the patient to pay now, immediately, today or by a deadline.`,
+    "For insurance fields, use approved, settled or credited rather than covered or paid by insurance. For the amount shown as due, say what the bill shows, not what the patient must do.",
+    "A field marked missing is unknown. Say the information is not available; never say or imply zero, and never guess.",
     "Do not claim that any value is confirmed by the patient.",
-    "Explain all five supplied fields exactly once each, and no other fields.",
-    'Return JSON shaped exactly as {"sections":[{"fieldKey":"...","explanation":"..."}]}.',
-    "Put only the patient-facing meaning in explanation, with no markdown and no extra keys.",
+    "Explain all five supplied fields exactly once each, in the order given, and no other fields.",
+    'Return only JSON shaped exactly as {"sections":[{"fieldKey":"...","explanation":"..."}]}. Each explanation must be one short sentence of general meaning, with no markdown, no list, no extra keys.',
   ].join("\n");
 
   const fieldLines = input.fields.map((field) => {
-    const label = FIELD_MEANINGS[field.fieldKey];
+    const guidance = FIELD_GUIDANCE[field.fieldKey];
     const value = field.status === "missing" ? "missing from the record" : "available";
-    return `- ${field.fieldKey} (${label}): ${value}`;
+    return `- ${field.fieldKey} (${guidance.meaning}): ${value}. ${guidance.guidance}`;
   });
 
   const user = [
     "Verified hospital record fields (values are not shown to you and are rendered by the server):",
     ...fieldLines,
     "",
-    "Explain what each field means for the patient. For a missing field, say the information is not available.",
+    "Explain the general meaning of each field for the patient. For a missing field, say the information is not available.",
   ].join("\n");
 
   return { system, user };
@@ -199,14 +251,24 @@ export function createGeminiExplanationProvider(
             properties: {
               sections: {
                 type: "ARRAY",
+                description:
+                  "Exactly five sections, one for each supplied field, in the supplied order. No other fields.",
+                minItems: 5,
+                maxItems: 5,
                 items: {
                   type: "OBJECT",
                   properties: {
                     fieldKey: {
                       type: "STRING",
                       enum: [...financialFieldKeySchema.options],
+                      description:
+                        "The supplied field this section explains. Use each field key exactly once.",
                     },
-                    explanation: { type: "STRING" },
+                    explanation: {
+                      type: "STRING",
+                      description:
+                        "One short sentence in the requested language explaining only the general meaning. No amounts, digits, dates, percentages, currency, insurance promises, eligibility, waivers, payment obligations, or the word confirmed.",
+                    },
                   },
                   required: ["fieldKey", "explanation"],
                 },

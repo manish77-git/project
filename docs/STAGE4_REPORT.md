@@ -136,8 +136,8 @@ All fixtures are synthetic. No test uses a real hospital record or patient data.
 
 | Check | Result |
 | --- | --- |
-| `npm test` | **378 passed / 378**, 30 files, exit 0 |
-| Explanation suites | **63 passed / 63** (provider 10, validator 16, service 13, handler 16, response schema 8) |
+| `npm test` | **385 passed / 385**, 30 files, exit 0 (after the prompt-compliance fix below) |
+| Explanation suites | **70 passed / 70** (provider 12, validator 18, service 15, handler 17, response schema 8) |
 | `npm run test:ocr` | **8 passed / 8**, exit 0 |
 | `npm run lint` | 0 errors, 0 warnings, exit 0 |
 | `npx tsc --noEmit` | exit 0 |
@@ -151,8 +151,8 @@ explanation test injects a fake provider; every adapter test injects a fake HTTP
 transport. The adapter's request shape, key header, error mapping and timeout
 handling are covered by those tests.
 
-A one-off manual verification on 2026-10-19 used the configured
-`gemini-3.5-flash-lite` provider with synthetic fields only:
+A one-off manual verification on 2026-10-19, before the prompt fix below, used
+the configured `gemini-3.5-flash-lite` provider with synthetic fields only:
 
 - 3 of 3 direct provider calls completed successfully and returned JSON.
 - 2 drafts passed `validateProviderDraft`; 1 was rejected safely as an
@@ -166,6 +166,61 @@ A one-off manual verification on 2026-10-19 used the configured
 Live inference works, but the model remains variable, so the safe template
 fallback is a normal outcome, not a failure.
 
+### Follow-up: prompt compliance with the validator
+
+**Cause of the original `unsupported_claim` rejection.** The raw live draft was
+not persisted, so it can only be reconstructed. The old prompt told the model
+to render field meanings and only said "do not discuss insurance coverage",
+while the validator rejects the bare word `cover`/`covered`/`coverage` in any
+sentence, including a denial such as "not covered". Any neutral sentence for
+`insuranceApprovedButNotPaid` — the natural one being "approved to cover but not
+yet paid" — therefore failed even with no amount anywhere. That sentence is
+reproduced in `validator.test.ts` and `service.test.ts` and still fails, so the
+validator is unchanged.
+
+**Fix (prompt and schema only).** `provider.ts` now:
+
+- names the target language and script for each of English, Hindi and Kannada;
+- forbids digits in any script, number words, dates, percentages, currency and
+  identifiers, and explains it per language;
+- lists the exact claim words the validator rejects in all three languages,
+  explicitly including denials;
+- gives per-field wording: insurers *approve / settle / credit*, never *cover*;
+  the printed due amount is what the bill *shows*, never what the patient owes
+  or must pay;
+- pins the response schema to exactly five sections with descriptions, so the
+  model returns one explanation per supplied key.
+
+**Coverage added.** Prompt-aligned drafts validate in `en`, `hi` and `kn`
+(fixture `__fixtures__/prompt-aligned-drafts.ts`), each of the validator's
+rejected claim patterns is tested per language, and the live-style "cover"
+sentence is asserted to fall back without its text leaving the server.
+
+**Live verification after the fix: performed in all three languages.** The first
+environment had no `GEMINI_API_KEY`, so the check was deferred. It was then run
+against the configured provider through the existing `scripts/live-smoke.ts`
+driver, which performs the full challenge → access verification → bill
+verification → explanation workflow on the synthetic bill `INV-2026-0042` and
+prints no key, access code, token, raw draft or amount. One explanation request
+was made per language:
+
+| Language | HTTP | `validation` | `explanationResponseSchema` | Facts/sections vs record | Sentences vs template |
+| --- | --- | --- | --- | --- | --- |
+| English (`en`) | 200 | `validated` | conforms | 5/5 and 5/5 match | 5/5 differ |
+| Hindi (`hi`) | 200 | `validated` | conforms | 5/5 and 5/5 match | 5/5 differ |
+| Kannada (`kn`) | 200 | `validated` | conforms | 5/5 and 5/5 match | 5/5 differ |
+
+Every response carried `validation: "validated"`, so each was validated Gemini
+output rather than the deterministic fallback; the differing sentences are the
+independent confirmation that the fallback template was not returned. The
+validator was not changed to achieve this, and no API key, access code, bearer
+token, raw draft or amount appeared in the test output.
+
+These are **spot checks, not a success rate.** One request per language on one
+synthetic bill does not establish a general pass rate or production readiness,
+and it says nothing about other bills or other prompts. Model output stays variable, so a
+later request can still fall back to the server template.
+
 ## Environment
 
 - `ACCESS_SECRET` — required by the access and verified-session endpoints.
@@ -175,9 +230,15 @@ fallback is a normal outcome, not a failure.
 
 ## Remaining limitations
 
-- Live inference is verified manually on 2026-10-19, but it is not part of the
-  automated suite. Model output varies, so a request can still fall back to the
-  server template when a draft violates the safety guard.
+- Live inference is spot-checked manually, not part of the automated suite. The
+  2026-10-19 post-fix checks returned `validated` in English, Hindi and Kannada,
+  but one request per language is not a success rate. Model output varies, so a
+  request can still fall back to the server template when a draft violates the
+  safety guard, and the claim filter is lexical so it can reject legitimate
+  wording.
+- Access-session state (challenges, attempt counters, tokens) is held in
+  memory, so a restart invalidates live tokens; production needs a shared store
+  behind the same interface.
 - The synthetic records contain no dates, so `datesUsed` is always empty. A real
   record adapter with dates would need an authoritative date field and the same
   association checks before dates could be rendered.

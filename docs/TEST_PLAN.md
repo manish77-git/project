@@ -22,7 +22,7 @@ locally before pushing** — see [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md).
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Unit tests | `npm test` | ✅ **378 passed / 378**, 30 files, exit 0 |
+| Unit tests | `npm test` | ✅ **385 passed / 385**, 30 files, exit 0 |
 | Real-OCR tests | `npm run test:ocr` | ✅ **8 passed / 8**, 1 file, exit 0 |
 | Lint | `npm run lint` | ✅ 0 errors, 0 warnings, exit 0 |
 | Type-check | `npx tsc --noEmit` | ✅ exit 0 |
@@ -96,10 +96,15 @@ These areas have **no tests because the code does not exist yet**:
   has a caller in the app.
 - Any test of a real, badly photographed bill: rotation, shadows, creases,
   handwriting, multi-page documents. The OCR tests use clean synthetic pages.
-- Any **live** AI/vision provider call. The Gemini HTTP adapter is tested with a
-  fake transport; the suite makes no request to Google. A one-off manual live
-  check on 2026-10-19 succeeded (2 of 3 drafts validated; 1 safely fell back to
-  the server template).
+- Any **live** AI/vision provider call *in the automated suite*. The Gemini HTTP
+  adapter is tested with a fake transport; `npm test` makes no request to
+  Google. Live inference is spot-checked by hand instead: after the 2026-10-19
+  prompt-compliance fix, one live request per language returned
+  `validation: "validated"` and a schema-conformant response in English, Hindi
+  and Kannada, with all five sections/facts matching the synthetic record and
+  all five generated sentences differing from the fallback template. That is one
+  synthetic bill per language — a spot check, not a measured success rate or a
+  production-readiness claim.
 - Callbacks, patient confirmation, and the support dashboard — no endpoint
   exists for any of them.
 - Any test against a **real** PostgreSQL instance or a real hospital system.
@@ -148,8 +153,8 @@ Each item must exist before the corresponding feature is described as working.
    coverage/eligibility/waiver/payment-obligation claims are discarded; the
    provider never receives amounts or bill/hospital/token/code data; the public
    response is validated and raw drafts are not. Still to add: real recorded
-   dates to trace, a live provider call, and a review of whether prose states a
-   fact correctly as well as avoiding figures.
+   dates to trace, a live provider call inside the automated suite, and a review
+   of whether prose states a fact correctly as well as avoiding figures.
 
 6. **Callback consent** — submission without explicit consent is rejected;
    consent recorded with the ticket; a patient cannot inject their own ticket ID,
