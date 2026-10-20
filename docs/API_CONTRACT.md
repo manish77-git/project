@@ -1,9 +1,11 @@
-# API Contract — Patient Financial Navigator**Status: seven endpoints are implemented — `GET /api/health`,
+# API Contract — Patient Financial Navigator**Status: eight endpoints are implemented — `GET /api/health`,
 `POST /api/bills/identify`, `POST /api/bills/access/challenge`,
 `POST /api/bills/access/verify`, `POST /api/bills/verify`,
-`GET /api/bills/financials` and `POST /api/bills/explain`.** The explanation
-endpoint returns a validated, server-assembled explanation for a verified
-session; it is no longer a pending-validation gate. Everything else in this
+`GET /api/bills/financials`, `POST /api/bills/explain` and
+`POST /api/bills/questions`.** The explanation endpoint returns a validated,
+server-assembled explanation for a verified session; it is no longer a
+pending-validation gate. The questions endpoint answers one question about the
+same session, and also writes every figure itself. Everything else in this
 file describes shared data shapes implemented in `src/lib/schemas/`; it does
 NOT mean an endpoint exists for them.
 
@@ -423,6 +425,128 @@ response schema fixes the section count at five. The validator itself is
 unchanged: a draft that still uses a forbidden word falls back to the server
 template.
 
+### `POST /api/bills/questions`
+
+Route handler: `src/app/api/bills/questions/route.ts` (exported `POST`). The
+logic lives in `src/lib/questions/handler.ts`; the classification prompt in
+`src/lib/questions/provider.ts`; the checks and server-side answer text in
+`src/lib/questions/validator.ts`; the workflow in `src/lib/questions/service.ts`.
+
+- **Purpose:** answer one natural-language question about the bill this session
+  unlocked. The body cannot name a bill, an amount, an outcome or a verification
+  flag — those come from the session and the record.
+- **Content type:** `application/json`; anything else is `415`.
+- **Request — exactly two fields, strict:**
+
+  ```json
+  { "question": "What amount is recorded as due?", "language": "en" }
+  ```
+
+  | Field | Required | Notes |
+  | --- | --- | --- |
+  | `question` | yes | Trimmed, 1–500 characters. Longer input is `400`, never truncated. |
+  | `language` | yes | `en`, `hi` or `kn`. |
+
+  An extra property — `billNumber`, `amountRupees`, `outcome`, `isVerified` — is
+  `400`. A query string is ignored entirely.
+- **Authorization:** a live bearer session whose recorded outcome is not `null`.
+  The bill is resolved from the session, never the request, and the verdict is
+  recomputed against the current record before anything is answered.
+
+**Four question types, and who writes the answer**
+
+| Type | Example | Answer written by | May contain a figure? |
+| --- | --- | --- | --- |
+| Meaning | "What does insurance approved mean?" | Gemini, after validation | no |
+| Recorded fact | "What amount is recorded as due?" | **the server**, from `recordAmounts` | yes, the record's value |
+| Discrepancy | "Why is my bill different?" | **the server**, from the verification result's field keys | no |
+| Unsupported | "Should I sue the hospital?" | Gemini, after validation (or the server) | no |
+
+Two kinds of clarification are answered by the server: when the question is too
+vague to attach to one field, and when the model reports it cannot place the
+question. The service never picks a field on the patient's behalf.
+
+**Response — `200`, exactly `questionAnswerResponseSchema`**
+
+```json
+{
+  "validation": "server_rendered",
+  "answer": {
+    "language": "en",
+    "question": "What amount is recorded as due?",
+    "answerType": "record_fact",
+    "answerText": "Amount shown as due\nHospital record: INR 10,000.",
+    "fieldKey": "printedAmountDue",
+    "amountRupees": "10000",
+    "verifiedRecordReference": { "recordId": "mock:INV-2026-0042", "billNumber": "INV-2026-0042" },
+    "financialFactsUsed": [
+      { "fieldKey": "printedAmountDue", "amountRupees": "10000", "pageNumber": null }
+    ],
+    "warnings": [],
+    "notice": "This answer is informational. Amounts come only from the hospital's record."
+  }
+}
+```
+
+`validation` records provenance, not approval: `validated` means model prose
+passed every check, `server_rendered` means the server wrote it. A draft that
+fails is never labelled `validated`.
+
+**How the boundary is enforced.**
+
+1. The model receives the question, the five field **keys** with
+   available/missing, and whether the bill is verified. No amount, date, bill
+   number, hospital name, token or session id is sent.
+2. The question is passed inside explicit data markers, and the system
+   instruction says it is data — not instructions. Injection therefore has to
+   defeat the output checks as well.
+3. The draft is parsed strictly (`type`, `fieldKey`, `explanation`). A
+   `record_fact` with no field is turned into a clarification, never a guess; a
+   field on any other type fails the draft.
+4. Model prose runs through the explanation validator's existing text checks:
+   any digit in any script, currency, percentage, date word, high-value number
+   word, or coverage/eligibility/waiver/payment claim rejects the whole draft.
+5. `record_fact` answers are assembled **only** from
+   `record.recordAmounts[fieldKey]`, re-checked with `validateFinancialFact`,
+   and refused if the stored value does not satisfy `monetaryAmountSchema`.
+   The model's sentence is discarded entirely.
+6. A bill with an unresolved difference may be asked about — that is how a
+   discrepancy question is answered — but its figures are never released: a
+   figure question on such a bill returns an `unsupported` answer with no
+   amount. The same applies when re-verification no longer reports `verified`.
+
+| Code | HTTP | Cause |
+| --- | --- | --- |
+| `invalid_request` | 400 | Malformed JSON, empty/oversized question, unsupported language, or any extra property |
+| `access_denied` | 401 | Missing, invalid or expired bearer session |
+| `payload_too_large` | 413 | Body over 64 KB, refused while reading |
+| `unsupported_media_type` | 415 | Not `application/json` |
+| `verification_required` | 409 | The session has not called verify |
+| `hospital_not_registered` | 409 | Hospital is not registered |
+| `bill_not_found` | 404 | No record for the session's bill |
+| `question_unavailable` | 503 | `GEMINI_API_KEY` is absent; no provider call and no answer |
+| `access_unavailable` | 503 | No usable `ACCESS_SECRET` |
+| `question_failed` | 500 | The assembled answer failed its own schema |
+
+A provider failure, timeout or rejected draft is **not** an error status: the
+answer is a `200` with `answerType: "unavailable"` and server-written text, so
+the patient is told plainly that no answer was prepared rather than shown a
+plausible invention.
+
+**Tested by:** `src/lib/questions/provider.test.ts` (15),
+`validator.test.ts` (15), `service.test.ts` (17) and `handler.test.ts` (14),
+plus `src/lib/schemas/questions.test.ts` (16). All use a fake provider; the
+suite makes no live call.
+
+**Limitations (deliberate, for this stage).** Classification is the model's
+judgement, so a meaning question can occasionally be answered as `unsupported`,
+or vice versa — the cost of a wrong classification is a less useful answer, not
+an unreleased or invented figure. The synthetic records carry no dates, so no
+answer can say when something happened; a question about a date gets a meaning
+or unsupported answer, never a date. There is no conversation memory: each
+request is one question with no history, and no rate limit beyond the shared
+in-memory access state.
+
 ## Ground rules
 
 
@@ -575,6 +699,46 @@ field, no duplicate section or fact keys, and the same key set in sections and
 `financialFactsUsed`. `amountRupees` must be `null` exactly when `status` is
 `missing`; a model cannot supply a value because the provider draft has no
 amount field.
+
+## Bill questions (`questions.ts`)
+
+`questionRequestSchema` → `QuestionRequest`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `question` | `string` | Trimmed, 1–500 characters (`MAX_QUESTION_LENGTH`) |
+| `language` | `"en" \| "hi" \| "kn"` | |
+
+Strict — a client-supplied `billNumber`, `amountRupees`, `outcome` or
+`isVerified` is rejected.
+
+`questionAnswerSchema` → `QuestionAnswer`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `language` | `"en" \| "hi" \| "kn"` | |
+| `question` | `string` | Echoed back, so screen readers can read both together |
+| `answerType` | `meaning` \| `record_fact` \| `discrepancy` \| `clarification` \| `unsupported` \| `unavailable` | What the answer is |
+| `answerText` | `string` | 1–4000 chars |
+| `fieldKey` | `FinancialFieldKey \| null` | Set only for `record_fact` |
+| `amountRupees` | decimal string \| `null` | Rendered from the record; only `record_fact` may carry one |
+| `verifiedRecordReference` | `{ recordId, billNumber } \| null` | Set only for `record_fact` |
+| `financialFactsUsed` | `FinancialFact[]` | Exactly one fact for `record_fact`, empty otherwise |
+| `warnings` | `string[]` | e.g. "unknown, not zero" for a missing value |
+| `notice` | literal `"This answer is informational. Amounts come only from the hospital's record."` | Exact match required |
+
+Cross-field rules, enforced by `superRefine`: a `record_fact` answer must name
+its field, cite the record, and carry exactly one fact whose `fieldKey` and
+`amountRupees` match the answer. Every other answer type must leave `fieldKey`,
+`amountRupees`, `verifiedRecordReference` and `financialFactsUsed` empty. A
+meaning or refusal answer therefore cannot carry a figure, by construction.
+
+`questionAnswerResponseSchema` → `QuestionAnswerResponse` adds `validation`
+(`validated` | `server_rendered`) around the answer.
+
+The schema cannot compare a figure with the record — that happens in
+`src/lib/questions/validator.ts`, against the same field, exactly as the
+explanation path does it.
 
 ## Callback (`callback.ts`)
 
