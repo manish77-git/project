@@ -293,6 +293,10 @@ export function createGeminiExplanationProvider(
             },
             body: JSON.stringify(payload),
             signal: controller.signal,
+            // The key travels in a header. Following a redirect would re-send
+            // that header to whatever host the redirect names, so a redirected
+            // request is treated as a provider failure instead.
+            redirect: "error",
           },
         );
 

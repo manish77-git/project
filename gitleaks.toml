@@ -1,0 +1,47 @@
+# Gitleaks configuration (8.24.3).
+#
+# Nothing here replaces, removes or disables a default rule: `useDefault` merges
+# the bundled rule set in, and the blocks below only *append* an allowlist to
+# `generic-api-key`. That rule keeps its upstream regex, entropy threshold,
+# keywords and stopwords.
+#
+# Both allowlists require `condition = "AND"`, so a finding is ignored only when
+# the file *and* the line pattern both match. A real credential committed to
+# either file on any other line is still reported.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+# A. The printed-code alphabet is a public constant. 32 characters drawn from
+#    [A-Z2-9] is high-entropy and sits on the right of an `=`, so at the default
+#    entropy threshold it looks like a key.
+#
+#    The one-character class in the value below is deliberate: spelled out
+#    plainly, this line would match the rule it is written to exclude.
+[[rules.allowlists]]
+description = "ACCESS_CODE_ALPHABET constant in the access-code module"
+condition = "AND"
+paths = ['''^src/lib/access/codes\.ts$''']
+regexTarget = "line"
+regexes = [
+    '''ACCESS_CODE_ALPHABET = "[A]BCDEFGHJKLMNPQRSTUVWXYZ23456789";''',
+]
+
+# B. One synthetic fixture, named so it reads as fake, used as the HMAC key in
+#    the digest tests. Nothing depends on its secrecy: those tests assert the
+#    digest's behaviour, not the key's.
+#
+#    The pattern is the assignment plus that exact literal, so a different
+#    secret in the same file is still reported. The one-character class is the
+#    same trick as above, for the same reason.
+[[rules.allowlists]]
+description = "synthetic HMAC key fixture in the access-code digest tests"
+condition = "AND"
+paths = ['''^src/lib/access/codes\.test\.ts$''']
+regexTarget = "line"
+regexes = [
+    '''secret = "[a]-secret-long-enough-to-be-usable-1234567890";''',
+]
