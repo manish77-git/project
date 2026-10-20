@@ -73,12 +73,15 @@ export default function HospitalWorkerDashboard() {
     try {
       const stored = localStorage.getItem("mediexplain_tickets");
       if (stored) {
-        setTickets(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        queueMicrotask(() => {
+          setTickets(parsed);
+        });
       } else {
         localStorage.setItem("mediexplain_tickets", JSON.stringify(SEED_TICKETS));
       }
     } catch {
-      setTickets(SEED_TICKETS);
+      // Keep SEED_TICKETS default
     }
   }, []);
 

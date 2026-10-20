@@ -25,8 +25,42 @@ interface Props {
   t: Translations["chat"];
 }
 
+function buildInitialMessage(billContext: BillAnalysisResult, lang: Lang): ChatMessage {
+  const hospital = billContext.hospitalName || "your hospital";
+  const total = billContext.totalInr
+    ? `₹ ${parseFloat(billContext.totalInr).toLocaleString("en-IN")}`
+    : "";
+
+  let greeting = "";
+  if (lang === "hi") {
+    greeting = `नमस्ते! मैंने **${hospital}** के आपके बिल का विश्लेषण कर लिया है (कुल राशि ${total})। आप किसी भी शुल्क या सहायता के बारे में मुझसे पूछ सकते हैं।`;
+  } else if (lang === "kn") {
+    greeting = `ನಮಸ್ಕಾರ! ನಾನು **${hospital}** ನ ನಿಮ್ಮ ಬಿಲ್ ವಿಶ್ಲೇಷಣೆ ಮಾಡಿದ್ದೇನೆ (ಒಟ್ಟು ಮೊತ್ತ ${total})। ನಿರ್ದಿಷ್ಟ ಶುಲ್ಕಗಳು ಅಥವಾ ಮುಂದಿನ ಕ್ರಮಗಳ ಬಗ್ಗೆ ಯಾವುದೇ ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳಿ.`;
+  } else {
+    greeting = `Hello! I've reviewed your bill from **${hospital}** (total charges: ${total}). I'm here to explain any specific charge, help you draft a dispute, or clarify your next steps.`;
+  }
+
+  return {
+    id: "msg-init",
+    role: "assistant",
+    content: greeting,
+    timestamp: "Now",
+  };
+}
+
 export default function ContextualChat({ billContext, lang, t }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    buildInitialMessage(billContext, lang),
+  ]);
+  const [prevKey, setPrevKey] = useState(
+    () => `${billContext.billNumber || ""}-${lang}`
+  );
+  const currentKey = `${billContext.billNumber || ""}-${lang}`;
+  if (currentKey !== prevKey) {
+    setPrevKey(currentKey);
+    setMessages([buildInitialMessage(billContext, lang)]);
+  }
+
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [errorState, setErrorState] = useState(false);
@@ -34,35 +68,6 @@ export default function ContextualChat({ billContext, lang, t }: Props) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Initialize initial welcoming message with bill context
-  useEffect(() => {
-    const hospital = billContext.hospitalName || "your hospital";
-    const total = billContext.totalInr
-      ? `₹ ${parseFloat(billContext.totalInr).toLocaleString("en-IN")}`
-      : "";
-
-    let greeting = "";
-    if (lang === "hi") {
-      greeting = `नमस्ते! मैंने **${hospital}** के आपके बिल का विश्लेषण कर लिया है (कुल राशि ${total})। आप किसी भी शुल्क या सहायता के बारे में मुझसे पूछ सकते हैं।`;
-    } else if (lang === "kn") {
-      greeting = `ನಮಸ್ಕಾರ! ನಾನು **${hospital}** ನ ನಿಮ್ಮ ಬಿಲ್ ವಿಶ್ಲೇಷಣೆ ಮಾಡಿದ್ದೇನೆ (ಒಟ್ಟು ಮೊತ್ತ ${total}). ನಿರ್ದಿಷ್ಟ ಶುಲ್ಕಗಳು ಅಥವಾ ಮುಂದಿನ ಕ್ರಮಗಳ ಬಗ್ಗೆ ಯಾವುದೇ ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳಿ.`;
-    } else {
-      greeting = `Hello! I've reviewed your bill from **${hospital}** (total charges: ${total}). I'm here to explain any specific charge, help you draft a dispute, or clarify your next steps.`;
-    }
-
-    setMessages([
-      {
-        id: "msg-init",
-        role: "assistant",
-        content: greeting,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      },
-    ]);
-  }, [billContext, lang]);
 
   // Scroll to bottom on new messages
   useEffect(() => {

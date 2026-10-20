@@ -303,7 +303,7 @@ export default function SupportTicketSection({
                 Ticket ID: <span style={{ fontFamily: "monospace" }}>{issuedTicket.ticketId}</span>
               </h4>
               <p style={{ fontSize: "0.85rem", color: "#166534", margin: 0 }}>
-                Show this Ticket ID to your hospital's support worker or billing counter for quick reference.
+                Show this Ticket ID to your hospital&apos;s support worker or billing counter for quick reference.
               </p>
             </div>
 
