@@ -86,14 +86,18 @@ const LANGUAGE_INSTRUCTIONS: Record<LanguageCode, string> = {
  * The prompt repeats them so the model does not have to guess what "no
  * insurance promises" means. They are forbidden even in a denial: "not
  * covered" still tells the patient something the record does not establish.
+ *
+ * Exported for the bill-question prompt, which must forbid exactly the same
+ * words — a second list would drift, and a drifted list would silently reopen
+ * the hole the first one closes.
  */
-const BANNED_CLAIM_TERMS: Record<LanguageCode, string> = {
+export const BANNED_CLAIM_TERMS: Record<LanguageCode, string> = {
   en: "cover, covers, covered, coverage, eligible, eligibility, guarantee, guaranteed, waive, waived, waiver, write-off, confirmed, owe, payment is required",
   hi: "कवर, कवरेज, पात्र, गारंटी, माफ, माफी, भुगतान करना, चुकाना, अतिरिक्त छूट, विशेष छूट, बीमा भुगतान करेगा, बीमा भुगतान करेगी, बीमा देगा, बीमा देगी",
   kn: "ಕವರ್, ಕವರೇಜ್, ಅರ್ಹ, ಖಾತರಿ, ಮನ್ನಾ, ಪಾವತಿಸಬೇಕು, ತೆರಬೇಕು, ಹೆಚ್ಚುವರಿ ರಿಯಾಯಿತಿ, ವಿಶೇಷ ರಿಯಾಯಿತಿ, ವಿಮೆ ಪಾವತಿಸುತ್ತದೆ, ವಿಮೆ ನೀಡುತ್ತದೆ",
 };
 
-interface FieldGuidance {
+export interface FieldGuidance {
   meaning: string;
   guidance: string;
 }
@@ -103,8 +107,13 @@ interface FieldGuidance {
  * it without the claims the validator rejects. The guidance deliberately
  * avoids "cover" for the insurance fields, because that word is the most
  * common reason a neutral explanation fails the safety guard.
+ *
+ * Exported because the question-answering prompt describes the same five
+ * fields and must use the same descriptions: two lists of what a field means
+ * would eventually disagree, and a patient would then read two answers for one
+ * thing.
  */
-const FIELD_GUIDANCE: Record<FinancialFieldKey, FieldGuidance> = {
+export const FIELD_GUIDANCE: Record<FinancialFieldKey, FieldGuidance> = {
   billTotalAfterDiscounts: {
     meaning: "the total charge on the bill after reductions",
     guidance:
@@ -203,6 +212,130 @@ export type FetchLike = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+export interface GeminiCallOptions {
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  timeoutMs: number;
+  fetchImpl: FetchLike;
+  /** The `generateContent` request body, built by the caller. */
+  payload: unknown;
+}
+
+/**
+ * One `generateContent` call, shared by every Gemini-backed generator here.
+ *
+ * It owns the transport policy that must never vary between callers: the key
+ * travels in `x-goog-api-key` (never the URL), redirects are refused so the key
+ * is not re-sent to another host, the call is aborted after `timeoutMs`, and a
+ * vendor response is reduced to either its text or a closed set of failure
+ * reasons — the response body is never surfaced, so provider diagnostics
+ * cannot leak through an API error.
+ *
+ * Validation of what the text *means* stays with the caller: this function
+ * answers "what did the model say", never "may this be shown to a patient".
+ */
+export async function callGeminiGenerateContent(
+  options: GeminiCallOptions,
+): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+
+  try {
+    const response = await options.fetchImpl(
+      `${options.baseUrl}/models/${encodeURIComponent(options.model)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": options.apiKey,
+        },
+        body: JSON.stringify(options.payload),
+        signal: controller.signal,
+        // The key travels in a header. Following a redirect would re-send
+        // that header to whatever host the redirect names, so a redirected
+        // request is treated as a provider failure instead.
+        redirect: "error",
+      },
+    );
+
+    if (!response.ok) {
+      // Read and discard: the body is vendor diagnostics, not ours to expose.
+      await response.text().catch(() => "");
+      throw new ExplanationProviderError(
+        "unavailable",
+        "The explanation provider returned an error.",
+      );
+    }
+
+    let json: unknown;
+    try {
+      json = await response.json();
+    } catch {
+      throw new ExplanationProviderError(
+        "bad_response",
+        "The explanation provider returned a response that was not JSON.",
+      );
+    }
+
+    const parsed = geminiResponseSchema.safeParse(json);
+    if (!parsed.success) {
+      throw new ExplanationProviderError(
+        "bad_response",
+        "The explanation provider returned an unexpected response shape.",
+      );
+    }
+
+    if (parsed.data.promptFeedback?.blockReason) {
+      throw new ExplanationProviderError(
+        "blocked",
+        "The explanation provider refused to generate this explanation.",
+      );
+    }
+
+    const candidate = parsed.data.candidates?.[0];
+    if (!candidate) {
+      throw new ExplanationProviderError(
+        "bad_response",
+        "The explanation provider returned no candidates.",
+      );
+    }
+    if (candidate.finishReason && candidate.finishReason !== "STOP") {
+      throw new ExplanationProviderError(
+        "bad_response",
+        "The explanation provider did not finish its response.",
+      );
+    }
+
+    const text = (candidate.content?.parts ?? [])
+      .map((part) => part.text)
+      .join("")
+      .trim();
+    if (text.length === 0) {
+      throw new ExplanationProviderError(
+        "bad_response",
+        "The explanation provider returned no text.",
+      );
+    }
+
+    return text;
+  } catch (error) {
+    if (error instanceof ExplanationProviderError) throw error;
+    if (controller.signal.aborted) {
+      throw new ExplanationProviderError(
+        "timeout",
+        "The explanation provider did not answer in time.",
+      );
+    }
+    throw new ExplanationProviderError(
+      "unavailable",
+      "The explanation provider could not be reached.",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface GeminiProviderOptions {
   apiKey: string;
   /** Defaults to DEFAULT_GEMINI_MODEL. */
@@ -279,102 +412,16 @@ export function createGeminiExplanationProvider(
         },
       };
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-      try {
-        const response = await fetchImpl(
-          `${baseUrl}/models/${encodeURIComponent(model)}:generateContent`,
-          {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "x-goog-api-key": apiKey,
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-            // The key travels in a header. Following a redirect would re-send
-            // that header to whatever host the redirect names, so a redirected
-            // request is treated as a provider failure instead.
-            redirect: "error",
-          },
-        );
-
-        if (!response.ok) {
-          // Read and discard: the body is vendor diagnostics, not ours to expose.
-          await response.text().catch(() => "");
-          throw new ExplanationProviderError(
-            "unavailable",
-            "The explanation provider returned an error.",
-          );
-        }
-
-        let json: unknown;
-        try {
-          json = await response.json();
-        } catch {
-          throw new ExplanationProviderError(
-            "bad_response",
-            "The explanation provider returned a response that was not JSON.",
-          );
-        }
-
-        const parsed = geminiResponseSchema.safeParse(json);
-        if (!parsed.success) {
-          throw new ExplanationProviderError(
-            "bad_response",
-            "The explanation provider returned an unexpected response shape.",
-          );
-        }
-
-        if (parsed.data.promptFeedback?.blockReason) {
-          throw new ExplanationProviderError(
-            "blocked",
-            "The explanation provider refused to generate this explanation.",
-          );
-        }
-
-        const candidate = parsed.data.candidates?.[0];
-        if (!candidate) {
-          throw new ExplanationProviderError(
-            "bad_response",
-            "The explanation provider returned no candidates.",
-          );
-        }
-        if (candidate.finishReason && candidate.finishReason !== "STOP") {
-          throw new ExplanationProviderError(
-            "bad_response",
-            "The explanation provider did not finish its response.",
-          );
-        }
-
-        const text = (candidate.content?.parts ?? [])
-          .map((part) => part.text)
-          .join("")
-          .trim();
-        if (text.length === 0) {
-          throw new ExplanationProviderError(
-            "bad_response",
-            "The explanation provider returned no text.",
-          );
-        }
-
-        return text;
-      } catch (error) {
-        if (error instanceof ExplanationProviderError) throw error;
-        if (controller.signal.aborted) {
-          throw new ExplanationProviderError(
-            "timeout",
-            "The explanation provider did not answer in time.",
-          );
-        }
-        throw new ExplanationProviderError(
-          "unavailable",
-          "The explanation provider could not be reached.",
-        );
-      } finally {
-        clearTimeout(timer);
-      }
+      // Transport policy is shared with every other Gemini generator here;
+      // the prompt and the response schema are what make this one specific.
+      return callGeminiGenerateContent({
+        apiKey,
+        model,
+        baseUrl,
+        timeoutMs,
+        fetchImpl,
+        payload,
+      });
     },
   };
 }
