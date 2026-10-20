@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:db": "node --env-file=.env.local node_modules/vitest/vitest.mjs run src/lib/db/integration.test.ts",
     "test:ocr": "vitest run --config vitest.ocr.config.mts",
     "access:issue": "node --env-file-if-exists=.env.local --import tsx scripts/issue-access-code.ts"
   },
