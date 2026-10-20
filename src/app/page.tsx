@@ -120,10 +120,6 @@ export default function HomePage() {
     [selectedFile, lang, hospitalNameInput, billNumberInput]
   );
 
-  const handleLoadDemo = () => {
-    handleAnalyze();
-  };
-
   const handleReset = () => {
     setAnalysisResult(null);
     setSelectedFile(null);

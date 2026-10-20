@@ -199,7 +199,7 @@ async function callIdentifyImageEndpoint(
 /**
  * Identify bill via bill number entry (JSON)
  */
-async function callIdentifyNumberEndpoint(
+async function _callIdentifyNumberEndpoint(
   billNumber: string,
 ): Promise<{ billNumberCandidate: string | null; hospitalNameCandidate: string | null } | null> {
   try {
