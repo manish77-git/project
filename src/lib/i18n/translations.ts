@@ -41,6 +41,7 @@ export const translations = {
         "Having a slow internet connection? Enter your bill number instead.",
       optionLookupBadge: "Low Network / 2G Friendly",
       optionLookupBtn: "Enter Bill Number",
+      viewSampleBtn: "View a sample bill (demo data)",
     },
 
     // ── Low-Network Bill Lookup Form ──
@@ -62,6 +63,10 @@ export const translations = {
       connectionErrorMsg:
         "Could not connect to the hospital billing server. Please check your network and try again.",
       retryBtn: "Retry Lookup",
+      accessCodeLabel: "Hospital access code",
+      accessCodePlaceholder: "e.g. AB3DE-FGH7K",
+      accessCodeHint:
+        "Issued by the hospital. Without it, bill amounts cannot be shown.",
     },
 
     // ── Problem Form (if user wants to describe their issue) ──
@@ -87,7 +92,7 @@ export const translations = {
       title: "Upload Your Hospital Bill & Documents",
       dropzone: "Drag and drop your bill or supporting evidence here, or",
       browse: "Browse Files",
-      accepted: "Accepted: JPG, PNG, PDF, MP4/MOV, DOCX · Max 8 MB",
+      accepted: "Accepted: JPG, PNG, BMP · Max 8 MB (PDFs are not supported yet)",
       selected: "Selected file",
       preview: "Bill preview",
       changeFile: "Change file",
@@ -96,10 +101,15 @@ export const translations = {
       analyzingStep1: "Extracting text with OCR and Vision…",
       analyzingStep2: "Identifying charges and billing items…",
       analyzingStep3: "Generating plain-language explanations in English…",
-      errorType: "Unsupported file type. Please upload a JPG, PNG, PDF, or video.",
+      errorType:
+        "Unsupported file type. Please upload a JPG, PNG or BMP image. PDFs are not supported yet.",
       errorSize: "File exceeds 8 MB limit. Please choose a smaller file.",
       errorGeneric: "Something went wrong. Please try again.",
       retryBtn: "Try Again",
+      accessCodeLabel: "Hospital access code (optional)",
+      accessCodePlaceholder: "e.g. AB3DE-FGH7K",
+      accessCodeHint:
+        "Only a code issued by the hospital lets us check these figures against its record. Without one, the figures stay unverified.",
     },
 
     // ── Results ──
@@ -108,6 +118,31 @@ export const translations = {
       demoBanner:
         "Demo data — the results below use a sample bill, clearly demonstrated for testing.",
       realBanner: "Analysis complete — based on your uploaded document.",
+      documentBanner:
+        "Read from the uploaded bill — not independently verified.",
+      verifiedBanner:
+        "Verified against this bill's record in the hospital system.",
+      noResultBanner:
+        "No report was produced — the uploaded document could not be read.",
+      documentSubtitle: "These figures were read by OCR, not from a hospital record.",
+      verifiedSubtitle: "The amounts below come from the hospital record.",
+      demoSubtitle: "This is a sample bill, not the document you uploaded.",
+      hospitalNotStated: "Hospital name not read from the bill",
+      billNumberLabel: "Bill number",
+      billDateLabel: "Bill date",
+      totalNotStated: "Total not printed on the bill",
+      notStated: "Not available",
+      missingAmount: "No amount is available for this charge.",
+      couldNotReadTitle: "This bill could not be read",
+      couldNotReadMsg:
+        "No figures are shown because no readable text was found. Try a clearer photo, or enter the bill number instead.",
+      noChargesTitle: "No itemised charges were found",
+      noChargesMsg:
+        "The bill was read, but it did not contain any itemised charge or total that we can safely display.",
+      documentFinding:
+        "These figures come only from reading the uploaded document. They have not been compared with any hospital record.",
+      verifiedFinding:
+        "These amounts were read from the hospital record linked to this bill.",
       itemLabel: "Charge",
       amountLabel: "Amount",
       explanationLabel: "What this means",
@@ -237,6 +272,7 @@ export const translations = {
         "धीमा इंटरनेट है? इसके बजाय रसीद पर दिया गया बिल नंबर दर्ज करें।",
       optionLookupBadge: "कम नेटवर्क / 2G अनुकूल",
       optionLookupBtn: "बिल नंबर दर्ज करें",
+      viewSampleBtn: "नमूना बिल देखें (डेमो डेटा)",
     },
 
     // ── Low-Network Bill Lookup Form ──
@@ -258,6 +294,10 @@ export const translations = {
       connectionErrorMsg:
         "अस्पताल बिलिंग सर्वर से कनेक्ट नहीं हो सका। कृपया अपना नेटवर्क जांचें और पुनः प्रयास करें।",
       retryBtn: "पुनः खोजें",
+      accessCodeLabel: "अस्पताल एक्सेस कोड",
+      accessCodePlaceholder: "उदा. AB3DE-FGH7K",
+      accessCodeHint:
+        "अस्पताल द्वारा जारी। इसके बिना बिल की राशि नहीं दिखाई जा सकती।",
     },
 
     problemForm: {
@@ -281,7 +321,7 @@ export const translations = {
       title: "अपना अस्पताल बिल व दस्तावेज़ अपलोड करें",
       dropzone: "यहाँ फ़ाइल खींचें और छोड़ें, या",
       browse: "फ़ाइल चुनें",
-      accepted: "स्वीकृत: JPG, PNG, PDF, MP4/MOV, DOCX · अधिकतम 8 MB",
+      accepted: "स्वीकृत: JPG, PNG, BMP · अधिकतम 8 MB (PDF अभी समर्थित नहीं है)",
       selected: "चयनित फ़ाइल",
       preview: "बिल पूर्वावलोकन",
       changeFile: "फ़ाइल बदलें",
@@ -291,11 +331,15 @@ export const translations = {
       analyzingStep2: "शुल्कों और मदों की पहचान की जा रही है…",
       analyzingStep3: "सरल हिंदी में स्पष्टीकरण तैयार किए जा रहे हैं…",
       errorType:
-        "असमर्थित फ़ाइल प्रकार। कृपया JPG, PNG, PDF या वीडियो अपलोड करें।",
+        "असमर्थित फ़ाइल प्रकार। कृपया JPG, PNG या BMP छवि अपलोड करें। PDF अभी समर्थित नहीं है।",
       errorSize:
         "फ़ाइल 8 MB की सीमा से अधिक है। कृपया एक छोटी फ़ाइल चुनें।",
       errorGeneric: "कुछ गलत हुआ। कृपया पुनः प्रयास करें।",
       retryBtn: "पुनः प्रयास करें",
+      accessCodeLabel: "अस्पताल एक्सेस कोड (वैकल्पिक)",
+      accessCodePlaceholder: "उदा. AB3DE-FGH7K",
+      accessCodeHint:
+        "केवल अस्पताल द्वारा जारी कोड से ही इन आंकड़ों को उसके रिकॉर्ड से जांचा जा सकता है। कोड के बिना आंकड़े असत्यापित रहते हैं।",
     },
 
     results: {
@@ -303,6 +347,30 @@ export const translations = {
       demoBanner:
         "डेमो डेटा — नीचे दिए गए परिणाम एक नमूना बिल पर आधारित हैं।",
       realBanner: "विश्लेषण पूर्ण — आपके अपलोड किए गए दस्तावेज़ के आधार पर।",
+      documentBanner:
+        "आपके अपलोड किए गए बिल से पढ़ा गया — स्वतंत्र रूप से सत्यापित नहीं।",
+      verifiedBanner: "इस बिल के अस्पताल रिकॉर्ड से सत्यापित।",
+      noResultBanner:
+        "कोई रिपोर्ट नहीं बनाई गई — अपलोड किया गया दस्तावेज़ पढ़ा नहीं जा सका।",
+      documentSubtitle: "ये आंकड़े OCR द्वारा पढ़े गए हैं, अस्पताल रिकॉर्ड से नहीं।",
+      verifiedSubtitle: "नीचे दी गई राशियाँ अस्पताल के रिकॉर्ड से हैं।",
+      demoSubtitle: "यह एक नमूना बिल है, आपका अपलोड किया हुआ नहीं।",
+      hospitalNotStated: "अस्पताल का नाम बिल से नहीं पढ़ा जा सका",
+      billNumberLabel: "बिल नंबर",
+      billDateLabel: "बिल तिथि",
+      totalNotStated: "बिल पर कुल राशि नहीं छपी",
+      notStated: "उपलब्ध नहीं",
+      missingAmount: "इस शुल्क के लिए कोई राशि उपलब्ध नहीं है।",
+      couldNotReadTitle: "यह बिल पढ़ा नहीं जा सका",
+      couldNotReadMsg:
+        "कोई आंकड़ा नहीं दिखाया गया है क्योंकि कोई पढ़ने योग्य पाठ नहीं मिला। कृपया साफ़ फ़ोटो लें या बिल नंबर दर्ज करें।",
+      noChargesTitle: "कोई मद-वार शुल्क नहीं मिला",
+      noChargesMsg:
+        "बिल पढ़ा गया, लेकिन उसमें कोई ऐसी मद या कुल राशि नहीं मिली जिसे हम सुरक्षित रूप से दिखा सकें।",
+      documentFinding:
+        "ये आंकड़े केवल अपलोड किए गए दस्तावेज़ को पढ़ने से हैं। इन्हें किसी अस्पताल रिकॉर्ड से नहीं मिलाया गया।",
+      verifiedFinding:
+        "ये राशियाँ इस बिल से जुड़े अस्पताल रिकॉर्ड से पढ़ी गई हैं।",
       itemLabel: "शुल्क",
       amountLabel: "राशि",
       explanationLabel: "इसका अर्थ",
@@ -428,6 +496,7 @@ export const translations = {
         "ನಿಧಾನ ಇಂಟರ್ನೆಟ್ ಸಂಪರ್ಕವಿದೆಯೇ? ರಶೀದಿಯ ಬಿಲ್ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ.",
       optionLookupBadge: "ಕಡಿಮೆ ನೆಟ್‌ವರ್ಕ್ / 2G ಸ್ನೇಹಿ",
       optionLookupBtn: "ಬಿಲ್ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ",
+      viewSampleBtn: "ಮಾದರಿ ಬಿಲ್ ನೋಡಿ (ಡೆಮೊ ಡೇಟಾ)",
     },
 
     // ── Low-Network Bill Lookup Form ──
@@ -449,6 +518,10 @@ export const translations = {
       connectionErrorMsg:
         "ಆಸ್ಪತ್ರೆಯ ಬಿಲ್ಲಿಂಗ್ ಸರ್ವರ್‌ಗೆ ಸಂಪರ್ಕಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ನೆಟ್‌ವರ್ಕ್ ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
       retryBtn: "ಮತ್ತೆ ಹುಡುಕಿ",
+      accessCodeLabel: "ಆಸ್ಪತ್ರೆ ಪ್ರವೇಶ ಕೋಡ್",
+      accessCodePlaceholder: "ಉದಾ. AB3DE-FGH7K",
+      accessCodeHint:
+        "ಆಸ್ಪತ್ರೆ ನೀಡಿದ ಕೋಡ್. ಅದಿಲ್ಲದೆ ಬಿಲ್ ಮೊತ್ತ ತೋರಿಸಲಾಗದು.",
     },
 
     problemForm: {
@@ -472,7 +545,7 @@ export const translations = {
       title: "ನಿಮ್ಮ ಆಸ್ಪತ್ರೆ ಬಿಲ್ ಮತ್ತು ದಾಖಲೆಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ",
       dropzone: "ಇಲ್ಲಿ ಫೈಲ್ ಎಳೆದು ಬಿಡಿ, ಅಥವಾ",
       browse: "ಫೈಲ್ ಆಯ್ಕೆಮಾಡಿ",
-      accepted: "ಸ್ವೀಕರಿಸಲಾಗುವ ಮಾದರಿಗಳು: JPG, PNG, PDF, MP4/MOV, DOCX · ಗರಿಷ್ಠ 8 MB",
+      accepted: "ಸ್ವೀಕರಿಸಲಾಗುವ ಮಾದರಿಗಳು: JPG, PNG, BMP · ಗರಿಷ್ಠ 8 MB (PDF ಇನ್ನೂ ಬೆಂಬಲಿತವಲ್ಲ)",
       selected: "ಆಯ್ಕೆಮಾಡಿದ ಫೈಲ್",
       preview: "ಬಿಲ್ ಮುನ್ನೋಟ",
       changeFile: "ಫೈಲ್ ಬದಲಾಯಿಸಿ",
@@ -482,11 +555,15 @@ export const translations = {
       analyzingStep2: "ಶುಲ್ಕಗಳು ಮತ್ತು ಐಟಂಗಳನ್ನು ಗುರುತಿಸಲಾಗುತ್ತಿದೆ…",
       analyzingStep3: "ಸರಳ ಕನ್ನಡದಲ್ಲಿ ವಿವರಣೆಗಳನ್ನು ರಚಿಸಲಾಗುತ್ತಿದೆ…",
       errorType:
-        "ಬೆಂಬಲವಿಲ್ಲದ ಫೈಲ್ ಮಾದರಿ. ದಯವಿಟ್ಟು JPG, PNG, PDF ಅಥವಾ ವೀಡಿಯೋ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.",
+        "ಬೆಂಬಲವಿಲ್ಲದ ಫೈಲ್ ಮಾದರಿ. ದಯವಿಟ್ಟು JPG, PNG ಅಥವಾ BMP ಚಿತ್ರ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ. PDF ಇನ್ನೂ ಬೆಂಬಲಿತವಲ್ಲ.",
       errorSize:
         "ಫೈಲ್ 8 MB ಮಿತಿಯನ್ನು ಮೀರಿದೆ. ದಯವಿಟ್ಟು ಸಣ್ಣ ಫೈಲ್ ಆಯ್ಕೆಮಾಡಿ.",
       errorGeneric: "ದೋಷ ಸಂಭವಿಸಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
       retryBtn: "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ",
+      accessCodeLabel: "ಆಸ್ಪತ್ರೆ ಪ್ರವೇಶ ಕೋಡ್ (ಐಚ್ಛಿಕ)",
+      accessCodePlaceholder: "ಉದಾ. AB3DE-FGH7K",
+      accessCodeHint:
+        "ಆಸ್ಪತ್ರೆ ನೀಡಿದ ಕೋಡ್ ಇದ್ದರೆ ಮಾತ್ರ ಈ ಮೊತ್ತಗಳನ್ನು ಅದರ ದಾಖಲೆಯೊಂದಿಗೆ ಪರಿಶೀಲಿಸಬಹುದು. ಕೋಡ್ ಇಲ್ಲದೆ ಮೊತ್ತಗಳು ಪರಿಶೀಲಿಸದೆ ಉಳಿಯುತ್ತವೆ.",
     },
 
     results: {
@@ -494,6 +571,30 @@ export const translations = {
       demoBanner:
         "ಡೆಮೊ ಡೇಟಾ — ಕೆಳಗಿನ ಫಲಿತಾಂಶಗಳು ಪರೀಕ್ಷಾರ್ಥ ಮಾದರಿ ಬಿಲ್ ಆಧರಿಸಿವೆ.",
       realBanner: "ವಿಶ್ಲೇಷಣೆ ಪೂರ್ಣಗೊಂಡಿದೆ — ನಿಮ್ಮ ದಾಖಲೆಯ ಆಧಾರದ ಮೇಲೆ.",
+      documentBanner:
+        "ನಿಮ್ಮ ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ಬಿಲ್‌ನಿಂದ ಓದಲಾಗಿದೆ — ಸ್ವತಂತ್ರವಾಗಿ ಪರಿಶೀಲಿಸಲಾಗಿಲ್ಲ.",
+      verifiedBanner: "ಈ ಬಿಲ್‌ನ ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯೊಂದಿಗೆ ಪರಿಶೀಲಿಸಲಾಗಿದೆ.",
+      noResultBanner:
+        "ಯಾವುದೇ ವರದಿ ತಯಾರಾಗಿಲ್ಲ — ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ದಾಖಲೆ ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.",
+      documentSubtitle: "ಈ ಮೊತ್ತಗಳನ್ನು OCR ಓದಿದೆ, ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯಿಂದ ಅಲ್ಲ.",
+      verifiedSubtitle: "ಕೆಳಗಿನ ಮೊತ್ತಗಳು ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯಿಂದ.",
+      demoSubtitle: "ಇದು ಮಾದರಿ ಬಿಲ್, ನೀವು ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ದಾಖಲೆ ಅಲ್ಲ.",
+      hospitalNotStated: "ಆಸ್ಪತ್ರೆಯ ಹೆಸರು ಬಿಲ್‌ನಿಂದ ಓದಲಾಗಿಲ್ಲ",
+      billNumberLabel: "ಬಿಲ್ ಸಂಖ್ಯೆ",
+      billDateLabel: "ಬಿಲ್ ದಿನಾಂಕ",
+      totalNotStated: "ಬಿಲ್‌ನಲ್ಲಿ ಒಟ್ಟು ಮೊತ್ತ ಇಲ್ಲ",
+      notStated: "ಲಭ್ಯವಿಲ್ಲ",
+      missingAmount: "ಈ ಶುಲ್ಕಕ್ಕೆ ಮೊತ್ತ ಲಭ್ಯವಿಲ್ಲ.",
+      couldNotReadTitle: "ಈ ಬಿಲ್ ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
+      couldNotReadMsg:
+        "ಓದಬಹುದಾದ ಪಠ್ಯ ಸಿಗದ ಕಾರಣ ಯಾವುದೇ ಮೊತ್ತ ತೋರಿಸಿಲ್ಲ. ಸ್ಪಷ್ಟ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಬಿಲ್ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ.",
+      noChargesTitle: "ಯಾವುದೇ ವಿವರ ಶುಲ್ಕ ಸಿಗಲಿಲ್ಲ",
+      noChargesMsg:
+        "ಬಿಲ್ ಓದಲಾಗಿದೆ, ಆದರೆ ಸುರಕ್ಷಿತವಾಗಿ ತೋರಿಸಬಹುದಾದ ವಿವರ ಅಥವಾ ಒಟ್ಟು ಮೊತ್ತ ಅದರಲ್ಲಿ ಇರಲಿಲ್ಲ.",
+      documentFinding:
+        "ಈ ಮೊತ್ತಗಳು ಅಪ್‌ಲೋಡ್ ಮಾಡಿದ ದಾಖಲೆಯ ಓದಿನಿಂದ ಮಾತ್ರ. ಅವನ್ನು ಯಾವುದೇ ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯೊಂದಿಗೆ ಹೋಲಿಸಿಲ್ಲ.",
+      verifiedFinding:
+        "ಈ ಮೊತ್ತಗಳನ್ನು ಈ ಬಿಲ್‌ಗೆ ಸಂಬಂಧಿಸಿದ ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯಿಂದ ಓದಲಾಗಿದೆ.",
       itemLabel: "ಶುಲ್ಕ",
       amountLabel: "ಮೊತ್ತ",
       explanationLabel: "ಇದರ ಅರ್ಥ",

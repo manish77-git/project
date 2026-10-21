@@ -51,13 +51,14 @@ export default function BillLineItemCard({ item, index, lang, t }: Props) {
   const speechLangCode =
     lang === "hi" ? "hi-IN" : lang === "kn" ? "kn-IN" : "en-IN";
 
-  const textToSpeak = item.confident
-    ? `${item.chargeLabel}. ${
+  const amountText = item.amountInr
+    ? `${
         lang === "hi" ? "राशि" : lang === "kn" ? "ಮೊತ್ತ" : "Amount"
-      }: ${formatAmount(item.amountInr)} ${
+      }: ₹ ${formatAmount(item.amountInr)} ${
         lang === "hi" ? "रुपये" : lang === "kn" ? "ರೂಪಾಯಿಗಳು" : "rupees"
-      }. ${item.explanation}`
-    : `${item.chargeLabel}. ${t.unclear}`;
+      }`
+    : t.notStated;
+  const textToSpeak = `${item.chargeLabel}. ${amountText}. ${item.explanation}`;
 
   const handleSpeak = useCallback(() => {
     if (!("speechSynthesis" in window)) return;
@@ -80,7 +81,7 @@ export default function BillLineItemCard({ item, index, lang, t }: Props) {
     setSpeaking(true);
   }, [speaking, textToSpeak, speechLangCode]);
 
-  const formattedAmount = formatAmount(item.amountInr);
+  const formattedAmount = item.amountInr ? formatAmount(item.amountInr) : null;
 
   return (
     <article
@@ -143,7 +144,7 @@ export default function BillLineItemCard({ item, index, lang, t }: Props) {
           fontVariantNumeric: "tabular-nums",
           whiteSpace: "nowrap",
         }}>
-          ₹ {formattedAmount}
+          {formattedAmount ? `₹ ${formattedAmount}` : t.notStated}
         </div>
       </div>
 
@@ -160,12 +161,12 @@ export default function BillLineItemCard({ item, index, lang, t }: Props) {
           fontSize: "0.82rem",
         }}>
           <AlertIcon />
-          <span>{t.unclear}</span>
+          <span>{t.missingAmount}</span>
         </div>
       )}
 
       {/* Explanation */}
-      {item.confident && (
+      {item.explanation.length > 0 && (
         <p style={{
           fontSize: "0.9rem",
           color: "var(--text-secondary)",

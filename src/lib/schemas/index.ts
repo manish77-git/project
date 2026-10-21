@@ -16,6 +16,7 @@
 export * from "./common";
 export * from "./access";
 export * from "./identification";
+export * from "./document";
 export * from "./verification";
 export * from "./financial";
 export * from "./explanation";

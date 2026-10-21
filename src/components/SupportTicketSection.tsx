@@ -42,12 +42,18 @@ export default function SupportTicketSection({
   const [issuedTicket, setIssuedTicket] = useState<SupportTicket | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const hospitalId = "HOSP-SUNRISE-01";
-  const hospitalName = billContext.hospitalName || "Sunrise Community Hospital";
-  const billNumber = billContext.billNumber || "INV-2026-0042";
+  // No hospital is associated until a record has actually been verified.
+  // Inventing an ID or a fallback amount here would misroute the request and
+  // present a figure that is not on the patient's bill.
+  const hospitalId =
+    billContext.verification.state === "verified" ? "HOSP-VERIFIED" : "HOSP-UNVERIFIED";
+  const hospitalName =
+    billContext.hospitalName || "Hospital name not read from the bill";
+  const billNumber =
+    billContext.billNumber || "Bill number not read from the bill";
   const totalAmount = billContext.totalInr
     ? `₹ ${parseFloat(billContext.totalInr).toLocaleString("en-IN")}`
-    : "₹ 3,100";
+    : "Amount not stated on the bill";
 
   const handleCreateTicket = () => {
     // Enforce consent tick strictly
@@ -117,7 +123,9 @@ export default function SupportTicketSection({
             Connect with a Hospital Support Worker
           </h3>
           <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", margin: "2px 0 0" }}>
-            Your request is directly tied to your Hospital ID and Bill Number. A worker will review your case.
+            {billContext.verification.state === "verified"
+              ? "Your request is tied to the bill number and hospital record that were verified."
+              : "Your request includes the values read from your bill. No hospital record has been matched yet."}
           </p>
         </div>
       </div>
@@ -197,7 +205,7 @@ export default function SupportTicketSection({
             </label>
             <input
               type="text"
-              placeholder="e.g. I do not understand why the X-ray is ₹1,200, please assist."
+              placeholder="e.g. I do not understand this charge, please assist."
               value={patientNote}
               onChange={(e) => setPatientNote(e.target.value)}
               style={{
