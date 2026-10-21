@@ -27,7 +27,11 @@ import HospitalWorkerDashboard from "@/components/HospitalWorkerDashboard";
 import HowItWorks from "@/components/HowItWorks";
 import Footer from "@/components/Footer";
 
-import { analyzeBill } from "@/lib/services/billingService";
+import {
+  analyzeBill,
+  getDemoBill,
+  unavailableBillResult,
+} from "@/lib/services/billingService";
 import { translations, type Lang } from "@/lib/i18n/translations";
 import type { BillAnalysisResult } from "@/lib/types/billing";
 
@@ -44,9 +48,10 @@ export default function HomePage() {
 
   // Optional problem description fields
   const [userProblemDesc, setUserProblemDesc] = useState("");
-  const [hospitalNameInput, setHospitalNameInput] = useState("Sunrise Community Hospital");
-  const [billNumberInput, setBillNumberInput] = useState("INV-2026-0042");
   const [selectedCategory, setSelectedCategory] = useState("");
+  // Hospital-issued code. Without one the figures stay unverified; it is never
+  // guessed or hardcoded.
+  const [accessCode, setAccessCode] = useState("");
 
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const resultsSectionRef = useRef<HTMLDivElement>(null);
@@ -78,15 +83,18 @@ export default function HomePage() {
     }, 150);
   };
 
+  // Selecting a new file clears the previous bill entirely, so one bill's
+  // figures can never appear under another bill.
+  const handleFileSelected = (file: File | null) => {
+    setSelectedFile(file);
+    setAnalysisResult(null);
+  };
+
   // Perform bill analysis
   const handleAnalyze = useCallback(
     async (overrideFile?: File) => {
       const fileToUse = overrideFile || selectedFile;
-      const fallbackFile =
-        fileToUse ||
-        new File(["sample-bill"], "hospital-bill.jpg", {
-          type: "image/jpeg",
-        });
+      if (!fileToUse) return;
 
       setIsAnalyzing(true);
       setAnalysisStep(1);
@@ -95,17 +103,15 @@ export default function HomePage() {
       uploadSectionRef.current?.scrollIntoView({ behavior: "smooth" });
 
       try {
-        const result = await analyzeBill(fallbackFile, lang, (step) => {
-          setAnalysisStep(step);
-        });
-
-        // Attach hospital & bill number
-        result.hospitalName = hospitalNameInput.trim() || "Sunrise Community Hospital";
-        result.billNumber = billNumberInput.trim() || "INV-2026-0042";
+        const result = await analyzeBill(
+          fileToUse,
+          lang,
+          (step) => setAnalysisStep(step),
+          { accessCode },
+        );
 
         // ZERO IMAGE RETENTION: Delete selected file reference from memory
         setSelectedFile(null);
-
         setAnalysisResult(result);
 
         setTimeout(() => {
@@ -113,18 +119,30 @@ export default function HomePage() {
         }, 150);
       } catch (err) {
         console.error("Analysis failed:", err);
+        // Explicit failure: no sample bill, no amounts.
+        setAnalysisResult(unavailableBillResult(lang));
       } finally {
         setIsAnalyzing(false);
       }
     },
-    [selectedFile, lang, hospitalNameInput, billNumberInput]
+    [selectedFile, lang, accessCode]
   );
+
+  // Explicit, labelled demo path. This is the ONLY place demo data is shown.
+  const handleDemo = () => {
+    setSelectedFile(null);
+    setAnalysisResult(getDemoBill(lang));
+    setTimeout(() => {
+      resultsSectionRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 150);
+  };
 
   const handleReset = () => {
     setAnalysisResult(null);
     setSelectedFile(null);
     setIsAnalyzing(false);
     setUserProblemDesc("");
+    setAccessCode("");
     setPatientWorkflow("choice");
     setViewMode("patient");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -270,11 +288,57 @@ export default function HomePage() {
 
                 {/* Drag & Drop File Upload Component */}
                 <FileUpload
-                  onFileSelected={setSelectedFile}
+                  onFileSelected={handleFileSelected}
                   onAnalyze={() => handleAnalyze()}
                   isAnalyzing={isAnalyzing}
                   t={t.upload}
                 />
+
+                {/* Optional hospital access code. Without one the figures are
+                    shown as unverified, never as a hospital fact. */}
+                <div style={{ marginTop: "14px" }}>
+                  <label
+                    htmlFor="access-code"
+                    style={{
+                      display: "block",
+                      fontSize: "0.82rem",
+                      fontWeight: 700,
+                      color: "var(--text-secondary)",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    {t.upload.accessCodeLabel}
+                  </label>
+                  <input
+                    id="access-code"
+                    type="password"
+                    autoComplete="off"
+                    value={accessCode}
+                    onChange={(e) => setAccessCode(e.target.value)}
+                    placeholder={t.upload.accessCodePlaceholder}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: "var(--radius-sm)",
+                      border: "1px solid var(--border)",
+                      backgroundColor: "var(--surface-raised)",
+                      color: "var(--text)",
+                      fontSize: "0.88rem",
+                      fontFamily: "monospace",
+                      outline: "none",
+                    }}
+                  />
+                  <p
+                    style={{
+                      fontSize: "0.76rem",
+                      color: "var(--text-tertiary)",
+                      margin: "4px 0 0",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {t.upload.accessCodeHint}
+                  </p>
+                </div>
 
                 {/* Privacy Guarantee Note */}
                 <div
@@ -297,6 +361,26 @@ export default function HomePage() {
                     <strong>Zero Image Retention:</strong> Uploaded images are processed in volatile memory and immediately deleted. Only extracted financial fields are kept for your session.
                   </span>
                 </div>
+
+                {/* Explicit demo entry point — the only path to sample data. */}
+                <button
+                  type="button"
+                  onClick={handleDemo}
+                  style={{
+                    marginTop: "14px",
+                    padding: "8px 14px",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px dashed var(--border)",
+                    backgroundColor: "var(--surface-raised)",
+                    color: "var(--text-secondary)",
+                    fontSize: "0.8rem",
+                    fontWeight: 600,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                  }}
+                >
+                  {t.hero.viewSampleBtn}
+                </button>
 
                 {/* Problem Details Form */}
                 <div
@@ -326,48 +410,10 @@ export default function HomePage() {
                     {t.problemForm.subtitle}
                   </p>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                      gap: "12px",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <input
-                      type="text"
-                      placeholder={t.problemForm.hospitalPlaceholder}
-                      value={hospitalNameInput}
-                      onChange={(e) => setHospitalNameInput(e.target.value)}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: "var(--radius-sm)",
-                        border: "1px solid var(--border)",
-                        backgroundColor: "var(--surface-raised)",
-                        color: "var(--text)",
-                        fontSize: "0.88rem",
-                        outline: "none",
-                        fontFamily: "inherit",
-                      }}
-                    />
-
-                    <input
-                      type="text"
-                      placeholder={t.problemForm.billNumberPlaceholder}
-                      value={billNumberInput}
-                      onChange={(e) => setBillNumberInput(e.target.value)}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: "var(--radius-sm)",
-                        border: "1px solid var(--border)",
-                        backgroundColor: "var(--surface-raised)",
-                        color: "var(--text)",
-                        fontSize: "0.88rem",
-                        outline: "none",
-                        fontFamily: "inherit",
-                      }}
-                    />
-                  </div>
+                  {/* Hospital name and bill number are read from the uploaded
+                      document (or entered on the lookup screen). They are not
+                      typed here, so they can never be silently replaced by a
+                      prefilled example. */}
 
                   {/* Category Select */}
                   <div style={{ marginBottom: "12px" }}>
@@ -437,20 +483,26 @@ export default function HomePage() {
                 onNewAnalysis={handleReset}
               />
 
-              {/* ── PATIENT SUPPORT TICKET (Mandatory Consent & Ticket ID) ── */}
-              <SupportTicketSection
-                billContext={analysisResult}
-                onViewDashboard={() => setViewMode("worker")}
-              />
+              {/* Support and chat only make sense once a bill was actually
+                  read; an unreadable upload has no bill context to discuss. */}
+              {analysisResult.readStatus === "readable" && (
+                <>
+                  {/* ── PATIENT SUPPORT TICKET (Mandatory Consent & Ticket ID) ── */}
+                  <SupportTicketSection
+                    billContext={analysisResult}
+                    onViewDashboard={() => setViewMode("worker")}
+                  />
 
-              {/* ── Contextual AI Chatbox (Essential Feature) ── */}
-              <div style={{ margin: "2.5rem 0 4rem" }}>
-                <ContextualChat
-                  billContext={analysisResult}
-                  lang={lang}
-                  t={t.chat}
-                />
-              </div>
+                  {/* ── Contextual AI Chatbox (Essential Feature) ── */}
+                  <div style={{ margin: "2.5rem 0 4rem" }}>
+                    <ContextualChat
+                      billContext={analysisResult}
+                      lang={lang}
+                      t={t.chat}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
 

@@ -29,15 +29,38 @@ function buildInitialMessage(billContext: BillAnalysisResult, lang: Lang): ChatM
   const hospital = billContext.hospitalName || "your hospital";
   const total = billContext.totalInr
     ? `₹ ${parseFloat(billContext.totalInr).toLocaleString("en-IN")}`
-    : "";
+    : billContext.language === "hi"
+      ? "बिल पर नहीं छपी"
+      : billContext.language === "kn"
+        ? "ಬಿಲ್‌ನಲ್ಲಿ ಇಲ್ಲ"
+        : "not stated on the bill";
+
+  const sourceNote =
+    billContext.source === "verified"
+      ? billContext.language === "hi"
+        ? "अस्पताल रिकॉर्ड से सत्यापित"
+        : billContext.language === "kn"
+          ? "ಆಸ್ಪತ್ರೆ ದಾಖಲೆಯಿಂದ ಪರಿಶೀಲಿಸಲಾಗಿದೆ"
+          : "verified against the hospital record"
+      : billContext.source === "demo"
+        ? billContext.language === "hi"
+          ? "एक नमूना बिल (डेमो)"
+          : billContext.language === "kn"
+            ? "ಮಾದರಿ ಬಿಲ್ (ಡೆಮೊ)"
+            : "a sample bill for demonstration"
+        : billContext.language === "hi"
+          ? "आपके अपलोड किए गए बिल से पढ़ा गया, सत्यापित नहीं"
+          : billContext.language === "kn"
+            ? "ನಿಮ್ಮ ಅಪ್‌ಲೋಡ್ ಬಿಲ್‌ನಿಂದ ಓದಲಾಗಿದೆ, ಪರಿಶೀಲಿಸಿಲ್ಲ"
+            : "read from your uploaded bill and not independently verified";
 
   let greeting = "";
   if (lang === "hi") {
-    greeting = `नमस्ते! मैंने **${hospital}** के आपके बिल का विश्लेषण कर लिया है (कुल राशि ${total})। आप किसी भी शुल्क या सहायता के बारे में मुझसे पूछ सकते हैं।`;
+    greeting = `नमस्ते! मेरे पास **${hospital}** के बिल का यह संदर्भ है: ${sourceNote} (कुल राशि ${total})। आप किसी भी शुल्क या सहायता के बारे में पूछ सकते हैं।`;
   } else if (lang === "kn") {
-    greeting = `ನಮಸ್ಕಾರ! ನಾನು **${hospital}** ನ ನಿಮ್ಮ ಬಿಲ್ ವಿಶ್ಲೇಷಣೆ ಮಾಡಿದ್ದೇನೆ (ಒಟ್ಟು ಮೊತ್ತ ${total})। ನಿರ್ದಿಷ್ಟ ಶುಲ್ಕಗಳು ಅಥವಾ ಮುಂದಿನ ಕ್ರಮಗಳ ಬಗ್ಗೆ ಯಾವುದೇ ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳಿ.`;
+    greeting = `ನಮಸ್ಕಾರ! **${hospital}** ಬಿಲ್‌ನ ಈ ಮಾಹಿತಿ ನನ್ನ ಬಳಿ ಇದೆ: ${sourceNote} (ಒಟ್ಟು ಮೊತ್ತ ${total})। ನಿರ್ದಿಷ್ಟ ಶುಲ್ಕಗಳು ಅಥವಾ ಮುಂದಿನ ಕ್ರಮಗಳ ಬಗ್ಗೆ ಕೇಳಿ.`;
   } else {
-    greeting = `Hello! I've reviewed your bill from **${hospital}** (total charges: ${total}). I'm here to explain any specific charge, help you draft a dispute, or clarify your next steps.`;
+    greeting = `Hello! I have this bill context from **${hospital}** — ${sourceNote} (total charges: ${total}). I can explain charges, help you draft a dispute, or clarify your next steps.`;
   }
 
   return {
@@ -52,10 +75,10 @@ export default function ContextualChat({ billContext, lang, t }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     buildInitialMessage(billContext, lang),
   ]);
-  const [prevKey, setPrevKey] = useState(
-    () => `${billContext.billNumber || ""}-${lang}`
-  );
-  const currentKey = `${billContext.billNumber || ""}-${lang}`;
+  // The key includes the figures and source, so two different bills (even with
+  // the same number) never share chat history.
+  const currentKey = `${billContext.billNumber || ""}-${billContext.totalInr || ""}-${billContext.source}-${lang}`;
+  const [prevKey, setPrevKey] = useState(() => currentKey);
   if (currentKey !== prevKey) {
     setPrevKey(currentKey);
     setMessages([buildInitialMessage(billContext, lang)]);

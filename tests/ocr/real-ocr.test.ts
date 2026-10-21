@@ -15,6 +15,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { identifyBillFromImage } from "@/lib/identification/service";
+import { extractBillDocument } from "@/lib/document/service";
 import { createTesseractOcrEngine } from "@/lib/identification/tesseract-engine";
 import { blankPng, unreadablePng } from "@/lib/identification/__fixtures__/synthetic-image";
 
@@ -54,6 +55,43 @@ describe("real Tesseract OCR engine", () => {
     // "nothing leaks" assertion below.
     expect(page.text).toContain("15000");
     expect(page.text).toContain("5000");
+  });
+});
+
+describe("document extraction over real OCR", () => {
+  it("reads the bill's own total, insurance amount and date", async () => {
+    const outcome = await extractBillDocument({
+      bytes: PNG_BILL,
+      declaredMimeType: "image/png",
+      engine,
+    });
+
+    expect(outcome.kind).toBe("result");
+    if (outcome.kind !== "result") return;
+
+    expect(outcome.result.readStatus).toBe("readable");
+    expect(outcome.result.hospitalName?.value).toBe(HOSPITAL_NAME);
+    expect(outcome.result.billNumber?.value).toBe(BILL_NUMBER);
+    expect(outcome.result.billDate?.value).toBe("2026-10-01");
+    expect(outcome.result.totalAmount?.amountRupees).toBe("15000");
+    expect(outcome.result.insuranceApprovedAmount?.amountRupees).toBe("5000");
+    expect(outcome.result.patientPayableAmount).toBeNull();
+    // Every value carries the exact line it came from.
+    expect(outcome.result.totalAmount?.evidence.text).toContain("15000");
+    expect(outcome.result.notice).toMatch(/not independently verified/i);
+  });
+
+  it("returns no figures for a blank image instead of inventing them", async () => {
+    const outcome = await extractBillDocument({ bytes: blankPng(), engine });
+
+    expect(outcome.kind).toBe("result");
+    if (outcome.kind !== "result") return;
+
+    expect(outcome.result.readStatus).toBe("unreadable");
+    expect(outcome.result.totalAmount).toBeNull();
+    expect(outcome.result.insuranceApprovedAmount).toBeNull();
+    expect(outcome.result.patientPayableAmount).toBeNull();
+    expect(outcome.result.lineItems).toEqual([]);
   });
 });
 

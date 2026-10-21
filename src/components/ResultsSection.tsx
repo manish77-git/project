@@ -35,18 +35,26 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
       return;
     }
 
-    const hospitalStr = result.hospitalName || "Hospital Statement";
+    const hospitalStr = result.hospitalName || t.hospitalNotStated;
     const billStr = result.billNumber ? `Bill number ${result.billNumber}.` : "";
     const totalStr = result.totalInr ? `Total bill is ${result.totalInr} rupees.` : "";
+    const verificationStr =
+      result.source === "verified"
+        ? "These amounts were verified against the hospital record."
+        : result.source === "demo"
+          ? "This is a sample bill for demonstration, not the document you uploaded."
+          : result.readStatus !== "readable"
+            ? "The uploaded bill could not be read, so no amounts are shown."
+            : "These amounts were read from the uploaded bill and are not independently verified.";
 
     const itemsStr = result.items
       .map(
         (it, idx) =>
-          `Item ${idx + 1}: ${it.chargeLabel}, ${it.amountInr} rupees. ${it.explanation}`
+          `Item ${idx + 1}: ${it.chargeLabel}, ${it.amountInr ? `${it.amountInr} rupees` : t.notStated}. ${it.explanation}`
       )
       .join(". ");
 
-    const fullScript = `${hospitalStr}. ${billStr} ${totalStr} ${itemsStr}`;
+    const fullScript = `${hospitalStr}. ${billStr} ${totalStr} ${verificationStr} ${itemsStr}`;
 
     const utterance = new SpeechSynthesisUtterance(fullScript);
     utterance.lang = lang === "hi" ? "hi-IN" : lang === "kn" ? "kn-IN" : "en-IN";
@@ -60,13 +68,24 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
   };
 
   const handleCopy = () => {
+    // The copied summary must carry the same provenance statement the screen
+    // shows, so a pasted report can never look hospital-verified.
+    const sourceLine =
+      result.source === "demo"
+        ? t.demoBanner
+        : result.source === "verified"
+          ? t.verifiedBanner
+          : result.readStatus === "readable"
+            ? t.documentBanner
+            : t.noResultBanner;
     const summaryText = [
-      `${result.hospitalName || "Hospital Bill"} — Bill #${result.billNumber || "N/A"}`,
-      `Total: ₹ ${result.totalInr ? parseFloat(result.totalInr).toLocaleString("en-IN") : "N/A"}`,
+      `${result.hospitalName || t.hospitalNotStated} — ${t.billNumberLabel}: ${result.billNumber || t.notStated}`,
+      `${t.totalLabel}: ${itemAmountLabel(result.totalInr)}`,
+      sourceLine,
       "",
       ...result.items.map(
         (item, idx) =>
-          `${idx + 1}. ${item.chargeLabel}: ₹ ${item.amountInr}\n   ${item.explanation}`
+          `${idx + 1}. ${item.chargeLabel}: ${itemAmountLabel(item.amountInr)}\n   ${item.explanation}`
       ),
     ].join("\n");
 
@@ -83,6 +102,27 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
   const totalFormatted = result.totalInr
     ? parseFloat(result.totalInr).toLocaleString("en-IN")
     : null;
+
+  const isVerified = result.source === "verified";
+  const isDemo = result.source === "demo";
+  const bannerText = isDemo
+    ? t.demoBanner
+    : isVerified
+      ? t.verifiedBanner
+      : result.readStatus === "readable"
+        ? t.documentBanner
+        : t.noResultBanner;
+  const bannerColor = isVerified
+    ? { bg: "var(--success-light)", border: "var(--success)", text: "var(--success)" }
+    : { bg: "var(--warning-light)", border: "var(--warning)", text: "#92400e" };
+
+  const findings =
+    result.warnings.length > 0
+      ? result.warnings
+      : [isVerified ? t.verifiedFinding : t.documentFinding];
+
+  const itemAmountLabel = (amountInr: string | null) =>
+    amountInr ? `₹ ${parseFloat(amountInr).toLocaleString("en-IN")}` : t.notStated;
 
   return (
     <section
@@ -102,20 +142,15 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
           gap: "10px",
           padding: "12px 18px",
           borderRadius: "var(--radius)",
-          backgroundColor:
-            result.source === "demo"
-              ? "var(--warning-light)"
-              : "var(--success-light)",
-          border: `1px solid ${
-            result.source === "demo" ? "var(--warning)" : "var(--success)"
-          }`,
+          backgroundColor: bannerColor.bg,
+          border: `1px solid ${bannerColor.border}`,
           marginBottom: "1.75rem",
           fontSize: "0.88rem",
-          color: result.source === "demo" ? "#92400e" : "var(--success)",
+          color: bannerColor.text,
           fontWeight: 600,
         }}
       >
-        {result.source === "demo" ? (
+        {!isVerified ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
             <line x1="12" y1="9" x2="12" y2="13" />
@@ -127,7 +162,7 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
             <polyline points="22 4 12 14.01 9 11.01" />
           </svg>
         )}
-        <span>{result.source === "demo" ? t.demoBanner : t.realBanner}</span>
+        <span>{bannerText}</span>
       </div>
 
       {/* Main Results Card Header */}
@@ -156,7 +191,7 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
               color: "var(--primary)",
             }}
           >
-            {result.hospitalName || "Hospital Statement"}
+            {result.hospitalName || t.hospitalNotStated}
           </span>
           <h2
             id="results-heading"
@@ -176,12 +211,36 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
               margin: 0,
             }}
           >
-            Bill #{result.billNumber || "DEMO-2026-001"} · Verified with AI
+            {t.billNumberLabel}: {result.billNumber || t.notStated}
           </p>
+          {/* A document that could not be read has no figures to describe, so
+              it must not claim any were read by OCR. */}
+          {result.readStatus === "readable" && (
+            <p
+              style={{
+                fontSize: "0.82rem",
+                color: "var(--text-tertiary)",
+                margin: "4px 0 0",
+              }}
+            >
+              {isVerified ? t.verifiedSubtitle : isDemo ? t.demoSubtitle : t.documentSubtitle}
+            </p>
+          )}
+          {result.billDate && (
+            <p
+              style={{
+                fontSize: "0.8rem",
+                color: "var(--text-tertiary)",
+                margin: "4px 0 0",
+              }}
+            >
+              {t.billDateLabel}: {result.billDate}
+            </p>
+          )}
         </div>
 
         {/* Total Bill Badge */}
-        {totalFormatted && (
+        {(
           <div
             style={{
               backgroundColor: "var(--primary-light)",
@@ -204,17 +263,46 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
             </div>
             <div
               style={{
-                fontSize: "1.7rem",
+                fontSize: totalFormatted ? "1.7rem" : "1rem",
                 fontWeight: 800,
-                color: "var(--primary)",
+                color: totalFormatted ? "var(--primary)" : "var(--text-secondary)",
                 fontVariantNumeric: "tabular-nums",
               }}
             >
-              ₹ {totalFormatted}
+              {totalFormatted ? `₹ ${totalFormatted}` : t.totalNotStated}
             </div>
           </div>
         )}
       </div>
+
+      {/* Verification state — never a silent "looks verified" */}
+      {result.verification.state !== "verified" && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "10px",
+            padding: "12px 16px",
+            borderRadius: "var(--radius)",
+            border: `1px solid ${bannerColor.border}`,
+            backgroundColor: bannerColor.bg,
+            color: bannerColor.text,
+            fontSize: "0.86rem",
+            lineHeight: 1.5,
+            marginBottom: "1.25rem",
+          }}
+        >
+          <span aria-hidden="true" style={{ flexShrink: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </span>
+          <span>{result.verification.message}</span>
+        </div>
+      )}
 
       {/* Voice Guidance / Listen to All Bar */}
       <div
@@ -292,6 +380,26 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
         </button>
       </div>
 
+      {/* Explicit empty state: nothing was read, or nothing was recorded */}
+      {result.items.length === 0 && (
+        <div
+          style={{
+            backgroundColor: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "22px 24px",
+            marginBottom: "1.75rem",
+          }}
+        >
+          <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: "0 0 6px", color: "var(--text)" }}>
+            {result.readStatus !== "readable" ? t.couldNotReadTitle : t.noChargesTitle}
+          </h3>
+          <p style={{ fontSize: "0.88rem", color: "var(--text-secondary)", margin: 0, lineHeight: 1.55 }}>
+            {result.readStatus !== "readable" ? t.couldNotReadMsg : t.noChargesMsg}
+          </p>
+        </div>
+      )}
+
       {/* Vertical list of line item cards with Listen buttons */}
       <div
         style={{
@@ -362,7 +470,7 @@ export default function ResultsSection({ result, lang, t, onNewAnalysis }: Props
               gap: "8px",
             }}
           >
-            {t.findingsList.map((f, i) => (
+            {findings.map((f, i) => (
               <li
                 key={i}
                 style={{
