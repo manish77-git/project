@@ -1,8 +1,9 @@
-# API Contract — Patient Financial Navigator**Status: eight endpoints are implemented — `GET /api/health`,
-`POST /api/bills/identify`, `POST /api/bills/access/challenge`,
-`POST /api/bills/access/verify`, `POST /api/bills/verify`,
-`GET /api/bills/financials`, `POST /api/bills/explain` and
-`POST /api/bills/questions`.** The explanation endpoint returns a validated,
+# API Contract — Patient Financial Navigator**Status: nine endpoints are implemented — `GET /api/health`,
+`POST /api/bills/identify`, `POST /api/bills/extract`,
+`POST /api/bills/access/challenge`, `POST /api/bills/access/verify`,
+`POST /api/bills/verify`, `GET /api/bills/financials`,
+`POST /api/bills/explain` and `POST /api/bills/questions`.** The explanation
+endpoint returns a validated,
 server-assembled explanation for a verified session; it is no longer a
 pending-validation gate. The questions endpoint answers one question about the
 same session, and also writes every figure itself. Everything else in this
@@ -121,6 +122,56 @@ patient data), in the OS temp directory.
 **Tested by:** `handler.test.ts` (24), `service.test.ts` (23),
 `extract.test.ts` (24), `image-input.test.ts` (12), `module-boundaries.test.ts`
 (4). `npm run test:ocr` adds 8 more tests against the **real** engine.
+
+### `POST /api/bills/extract`
+
+Route handler: `src/app/api/bills/extract/route.ts` (exported `POST`). The logic
+lives in `src/lib/document/handler.ts`; the reading logic in
+`src/lib/document/extract.ts` and `src/lib/document/service.ts`.
+
+- **Purpose:** report what is printed on the uploaded bill — hospital name, bill
+  number, date, itemised charges, total, insurance-approved amount and
+  patient-payable amount. It is **not** verification and does not consult a
+  hospital record. Every response carries
+  `"notice": "Read from the uploaded bill — not independently verified."`
+- **Request:** `multipart/form-data` with `billImage` (PNG, JPEG or BMP, ≤ 8 MB;
+  the type is decided from magic bytes). Anything else is `415`.
+- **Response — `200`, exactly `billDocumentExtractionSchema`.** Every value
+  carries the line it came from; a value that is not printed, or is printed more
+  than once with different figures, is `null`:
+
+  ```json
+  {
+    "readStatus": "readable",
+    "hospitalName": { "value": "CITY GENERAL HOSPITAL", "evidence": { "lineNumber": 1, "text": "CITY GENERAL HOSPITAL" } },
+    "billNumber": { "value": "INV-2026-0042", "evidence": { "lineNumber": 3, "text": "Bill No: INV-2026-0042" } },
+    "billDate": { "value": "2026-10-01", "evidence": { "lineNumber": 4, "text": "Bill Date: 01-10-2026" } },
+    "lineItems": [],
+    "totalAmount": { "amountRupees": "15000", "evidence": { "lineNumber": 5, "text": "Total Amount: Rs 15000" } },
+    "insuranceApprovedAmount": { "amountRupees": "5000", "evidence": { "lineNumber": 6, "text": "Insurance approved: Rs 5000" } },
+    "patientPayableAmount": null,
+    "currency": "INR",
+    "warnings": ["No itemised charges could be read from this document."],
+    "notice": "Read from the uploaded bill — not independently verified."
+  }
+  ```
+
+- **Unreadable input:** `200` with `readStatus: "unreadable"`, every field
+  `null`, `lineItems: []` and a warning that says no figures are shown. A blank
+  or noise-only image never becomes an invented amount.
+- **Errors:** the identification error vocabulary (`invalid_request` 400,
+  `empty_image` 400, `unsupported_media_type` 415, `payload_too_large` 413,
+  `ocr_unavailable` 503, `extraction_failed` 500).
+- **Never returned:** a hospital-record amount, a verification verdict, a bill
+  number that was not read, or the sample bill. The document module imports
+  neither `@/lib/records` nor `@/lib/verification`, enforced by
+  `src/lib/document/module-boundaries.test.ts`.
+- **Uploads are not retained**, same as identification. Responses are
+  `cache-control: no-store`.
+- **Tested by:** `src/lib/document/handler.test.ts`, `service.test.ts`,
+  `extract.test.ts`, `module-boundaries.test.ts`, plus
+  `src/lib/services/billingService.test.ts`. `npm run test:ocr` exercises it
+  against the real engine.
 
 ## Access-code endpoints
 

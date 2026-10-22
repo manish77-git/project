@@ -29,9 +29,11 @@ export default function BillNumberLookup({
   onSwitchToUpload,
 }: Props) {
   const [billNumber, setBillNumber] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notFoundState, setNotFoundState] = useState(false);
+  const [notFoundMessage, setNotFoundMessage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -53,17 +55,23 @@ export default function BillNumberLookup({
 
     setErrorMessage(null);
     setNotFoundState(false);
+    setNotFoundMessage(null);
     setConnectionError(false);
     setIsSearching(true);
 
     try {
-      const response: BillLookupResponse = await lookupBillByNumber(query, lang);
+      const response: BillLookupResponse = await lookupBillByNumber(
+        query,
+        lang,
+        accessCode,
+      );
 
       if (response.status === "found" && response.result) {
         onBillFound(response.result);
       } else if (response.status === "connection_error") {
         setConnectionError(true);
       } else {
+        setNotFoundMessage(response.message ?? null);
         setNotFoundState(true);
       }
     } catch {
@@ -82,6 +90,7 @@ export default function BillNumberLookup({
 
   const handleTryAnother = () => {
     setNotFoundState(false);
+    setNotFoundMessage(null);
     setConnectionError(false);
     setErrorMessage(null);
     setBillNumber("");
@@ -241,48 +250,51 @@ export default function BillNumberLookup({
         )}
       </div>
 
-      {/* Sample Bill Quick-Fill Suggestion */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          marginBottom: "1.5rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <span
+      {/* Hospital access code — required before any bill detail is shown. */}
+      <div style={{ marginBottom: "1.5rem" }}>
+        <label
+          htmlFor="lookup-access-code"
           style={{
-            fontSize: "0.78rem",
-            color: "var(--text-tertiary)",
-            fontWeight: 600,
+            display: "block",
+            fontSize: "0.82rem",
+            fontWeight: 700,
+            color: "var(--text-secondary)",
+            marginBottom: "4px",
           }}
         >
-          Quick test demo numbers:
-        </span>
-        {["BILL-2026-001", "INV-2026-0042"].map((demoNum) => (
-          <button
-            key={demoNum}
-            type="button"
-            onClick={() => {
-              setBillNumber(demoNum);
-              handleLookup(demoNum);
-            }}
-            style={{
-              padding: "4px 10px",
-              borderRadius: "6px",
-              border: "1px solid var(--border)",
-              backgroundColor: "var(--surface-raised)",
-              color: "var(--primary)",
-              fontFamily: "monospace",
-              fontSize: "0.78rem",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            {demoNum}
-          </button>
-        ))}
+          {t.accessCodeLabel}
+        </label>
+        <input
+          id="lookup-access-code"
+          type="password"
+          autoComplete="off"
+          value={accessCode}
+          onChange={(e) => setAccessCode(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={t.accessCodePlaceholder}
+          disabled={isSearching}
+          style={{
+            width: "100%",
+            padding: "12px 14px",
+            borderRadius: "var(--radius)",
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--surface-raised)",
+            color: "var(--text)",
+            fontSize: "0.95rem",
+            fontFamily: "monospace",
+            outline: "none",
+          }}
+        />
+        <p
+          style={{
+            fontSize: "0.76rem",
+            color: "var(--text-tertiary)",
+            margin: "4px 0 0",
+            lineHeight: 1.45,
+          }}
+        >
+          {t.accessCodeHint}
+        </p>
       </div>
 
       {/* Action Button */}
@@ -383,7 +395,7 @@ export default function BillNumberLookup({
                   margin: 0,
                 }}
               >
-                {t.notFoundMsg}
+                {notFoundMessage || t.notFoundMsg}
               </p>
             </div>
           </div>

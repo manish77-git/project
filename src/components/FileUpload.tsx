@@ -21,7 +21,9 @@ interface Props {
   disabled?: boolean;
 }
 
-const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
+// Only formats the OCR engine can actually decode. PDFs are not supported yet,
+// so the picker must not promise them.
+const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/bmp"];
 const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 MB
 
 function UploadIcon() {
@@ -152,7 +154,7 @@ export default function FileUpload({ onFileSelected, onAnalyze, isAnalyzing, t, 
           <input
             ref={inputRef}
             type="file"
-            accept=".jpg,.jpeg,.png,.pdf"
+            accept=".jpg,.jpeg,.png,.bmp"
             onChange={handleInputChange}
             style={{ display: "none" }}
             aria-label={t.title}
@@ -247,7 +249,7 @@ export default function FileUpload({ onFileSelected, onAnalyze, isAnalyzing, t, 
                   {file.name}
                 </p>
                 <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--text-tertiary)" }}>
-                  PDF · {fileSizeLabel}
+                  Image · {fileSizeLabel}
                 </p>
               </div>
             </div>
